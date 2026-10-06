@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Добавить монополию</h1>
+
+<form method="POST" enctype="multipart/form-data" class="admin-form">
+    <label>Название <input type="text" name="name" required></label>
+    <label>ИНН <input type="text" name="inn" required maxlength="12"></label>
+    <label>Отрасль
+        <select name="industry_id" required>
+            {% for i in industries %}
+                <option value="{{ i.id }}">{{ i.name }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>Описание <textarea name="description"></textarea></label>
+    <label>Сайт <input type="url" name="website"></label>
+    <label>Логотип <input type="file" name="logo" accept="image/*"></label>
+    <button type="submit">Сохранить</button>
+</form>
+{% endblock %}

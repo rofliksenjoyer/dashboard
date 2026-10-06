@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Монополии по отраслям</h1>
+</div>
+
+<form method="GET" class="filters-form">
+    <div class="filter-group">
+        <label>Тип</label>
+        <select name="type" onchange="this.form.submit()">
+            <option value="" {% if not current_filter %}selected{% endif %}>Все типы</option>
+            <option value="natural" {% if current_filter == 'natural' %}selected{% endif %}>Естественные</option>
+            <option value="artificial" {% if current_filter == 'artificial' %}selected{% endif %}>Искусственные</option>
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label>Отрасль</label>
+        <select name="industry" onchange="this.form.submit()">
+            <option value="" {% if not current_industry %}selected{% endif %}>Все отрасли</option>
+            {% for i in all_industries %}
+                <option value="{{ i.id }}" {% if current_industry == i.id|string %}selected{% endif %}>
+                    {{ i.name }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label>Поиск</label>
+        <input type="text" name="q" value="{{ search }}" placeholder="Название или ИНН">
+    </div>
+
+    <button type="submit" class="btn-primary">Применить</button>
+    <a href="{{ url_for('index') }}" class="btn-secondary">Сбросить</a>
+</form>
+
+{% if grouped %}
+    {% for industry_name, data in grouped.items() %}
+    <section class="industry">
+        <h2>{{ industry_name }} <span class="badge badge-{{ data.type }}">{{ data.type }}</span></h2>
+        <div class="cards">
+            {% for m in data.monopolies %}
+            <a href="{{ url_for('monopoly_detail', monopoly_id=m.id) }}" class="card fade-in">
+                <h3>{{ m.name }}</h3>
+                <p class="muted">ИНН: {{ m.inn }}</p>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+{% else %}
+<p class="muted">По заданным фильтрам ничего не найдено.</p>
+{% endif %}
+{% endblock %}

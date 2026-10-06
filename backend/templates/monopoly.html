@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ monopoly.name }}</h1>
+    {% if monopoly.website %}
+        <a href="{{ monopoly.website }}" target="_blank" class="website-link">{{ monopoly.website }}</a>
+    {% endif %}
+</div>
+
+{% if monopoly.description %}
+<p class="description">{{ monopoly.description }}</p>
+{% endif %}
+
+{% if hhi or market_share %}
+<div class="metric-panel">
+    {% if hhi %}
+    <div class="metric-item">
+        <span class="metric-label">Индекс Херфиндаля-Хиршмана по отрасли</span>
+        <span class="metric-value">{{ hhi }}</span>
+    </div>
+    {% endif %}
+    {% if market_share is not none %}
+    <div class="metric-item">
+        <span class="metric-label">Доля рынка</span>
+        <span class="metric-value">{{ market_share }}%</span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if latest %}
+<h2>Показатели финансовой устойчивости</h2>
+<div class="metric-panel">
+    <div class="metric-item">
+        <span class="metric-label">Коэффициент автономии</span>
+        <span class="metric-value">
+            {% if latest.ratios.autonomy is defined %}{{ latest.ratios.autonomy }}{% else %}—{% endif %}
+        </span>
+    </div>
+    <div class="metric-item">
+        <span class="metric-label">Коэффициент долговой нагрузки</span>
+        <span class="metric-value">
+            {% if latest.ratios.debt_load is defined %}{{ latest.ratios.debt_load }}{% else %}—{% endif %}
+        </span>
+    </div>
+</div>
+
+<h2>Индекс Лернера (монопольная власть)</h2>
+<div class="metric-panel">
+    <div class="metric-item">
+        <span class="metric-label">Индекс Лернера</span>
+        <span class="metric-value">
+            {% if latest.ratios.lerner is defined %}{{ latest.ratios.lerner }}{% else %}—{% endif %}
+        </span>
+    </div>
+</div>
+
+<h2>Показатели рентабельности</h2>
+<div class="metric-panel">
+    <div class="metric-item">
+        <span class="metric-label">Рентабельность продаж</span>
+        <span class="metric-value">
+            {% if latest.ratios.profitability is defined %}{{ latest.ratios.profitability }}%{% else %}—{% endif %}
+        </span>
+    </div>
+    <div class="metric-item">
+        <span class="metric-label">Рентабельность собственного капитала (ROE)</span>
+        <span class="metric-value">
+            {% if latest.ratios.roe is defined %}{{ latest.ratios.roe }}%{% else %}—{% endif %}
+        </span>
+    </div>
+</div>
+{% endif %}
+
+<h2>Динамика и сравнение</h2>
+<div class="charts">
+    <div id="chart-revenue" class="chart"></div>
+    <div id="chart-ratios" class="chart"></div>
+    <div id="chart-indexes" class="chart"></div>
+    <div id="chart-radar" class="chart"></div>
+</div>
+
+{% if market_shares %}
+<div class="chart chart-wide" id="chart-market-share"></div>
+{% endif %}
+
+{% if latest %}
+<h2>Базовые показатели за {{ latest.period }} год</h2>
+<div class="metric-panel">
+    <div class="metric-item">
+        <span class="metric-label">Выручка от продаж</span>
+        <span class="metric-value">{{ latest.revenue if latest.revenue is not none else '—' }}</span>
+    </div>
+    <div class="metric-item">
+        <span class="metric-label">Собственный капитал</span>
+        <span class="metric-value">{{ latest.equity if latest.equity is not none else '—' }}</span>
+    </div>
+    <div class="metric-item">
+        <span class="metric-label">Активы</span>
+        <span class="metric-value">{{ latest.assets if latest.assets is not none else '—' }}</span>
+    </div>
+</div>
+{% endif %}
+
+<h2>Судебные дела</h2>
+{% if court_cases %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Номер дела</th>
+            <th>Суд</th>
+            <th>Дата</th>
+            <th>Статус</th>
+            <th>Ссылка</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for case in court_cases %}
+        <tr>
+            <td>{{ case.case_number }}</td>
+            <td>{{ case.court_name }}</td>
+            <td>{{ case.decision_date or '—' }}</td>
+            <td><span class="status status-{{ case.status }}">{{ case.status }}</span></td>
+            <td>
+                {% if case.decision_link %}
+                    <a href="{{ case.decision_link }}" target="_blank">Решение</a>
+                {% else %}—{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="muted">Судебные дела не найдены.</p>
+{% endif %}
+
+<script>
+    const chartData = {{ chart_data | tojson }};
+    const marketShares = {{ market_shares | tojson }};
+    const monopolyName = {{ monopoly.name | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% endblock %}
