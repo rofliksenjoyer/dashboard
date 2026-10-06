@@ -5,7 +5,6 @@ class Industry(db.Model):
     __tablename__ = "industries"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
-    monopoly_type = db.Column(db.String(20), nullable=False)  # natural / artificial
 
     monopolies = db.relationship(
         "Monopoly", back_populates="industry",
@@ -24,6 +23,7 @@ class Monopoly(db.Model):
     industry_id = db.Column(
         db.Integer, db.ForeignKey("industries.id"), nullable=False
     )
+    monopoly_type = db.Column(db.String(20), nullable=False)  # natural / artificial
     description = db.Column(db.Text, nullable=True)
     website = db.Column(db.String(200), nullable=True)
 
@@ -42,7 +42,7 @@ class Monopoly(db.Model):
 
 
 class Period(db.Model):
-    """Годовой период отчётности."""
+    """Годовой период отчётности монополии."""
     __tablename__ = "periods"
     id = db.Column(db.Integer, primary_key=True)
     monopoly_id = db.Column(
@@ -60,6 +60,9 @@ class Period(db.Model):
         db.UniqueConstraint("monopoly_id", "year"),
     )
 
+    def __repr__(self):
+        return f"<Period {self.year}>"
+
 
 class Metric(db.Model):
     """Справочник финансовых показателей из отчётности."""
@@ -75,7 +78,7 @@ class Metric(db.Model):
         return f"<Metric {self.name}>"
 
     def __str__(self):
-        return self.name  # чтобы в выпадающем списке был название, а не код
+        return self.name
 
 
 class PeriodValue(db.Model):
@@ -111,3 +114,6 @@ class CourtCase(db.Model):
     status = db.Column(db.String(20), default="pending")
 
     monopoly = db.relationship("Monopoly", back_populates="court_cases")
+
+    def __repr__(self):
+        return f"<CourtCase {self.case_number}>"

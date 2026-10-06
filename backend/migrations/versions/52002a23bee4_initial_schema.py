@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 7e6012ba884b
+Revision ID: 52002a23bee4
 Revises: 
-Create Date: 2026-10-07 00:33:28.058343
+Create Date: 2026-10-07 01:30:26.416676
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '7e6012ba884b'
+revision = '52002a23bee4'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -21,7 +21,6 @@ def upgrade():
     op.create_table('industries',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
-    sa.Column('monopoly_type', sa.String(length=20), nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
@@ -38,6 +37,7 @@ def upgrade():
     sa.Column('name', sa.String(length=200), nullable=False),
     sa.Column('inn', sa.String(length=12), nullable=False),
     sa.Column('industry_id', sa.Integer(), nullable=False),
+    sa.Column('monopoly_type', sa.String(length=20), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('website', sa.String(length=200), nullable=True),
     sa.ForeignKeyConstraint(['industry_id'], ['industries.id'], ),

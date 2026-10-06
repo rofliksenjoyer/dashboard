@@ -17,6 +17,7 @@ from models import (
     Industry, Monopoly, Period, PeriodValue, Metric, CourtCase
 )
 from seed import seed_metrics, seed_industries
+from wtforms import SelectField
 
 
 app = Flask(__name__, template_folder="templates", static_folder="../static")
@@ -154,9 +155,6 @@ def index():
 
     query = Industry.query
 
-    if type_filter in ("natural", "artificial"):
-        query = query.filter_by(monopoly_type=type_filter)
-
     if industry_filter and industry_filter.isdigit():
         query = query.filter_by(id=int(industry_filter))
 
@@ -165,6 +163,8 @@ def index():
     grouped = {}
     for industry in industries:
         m_query = Monopoly.query.filter_by(industry_id=industry.id)
+        if type_filter in ("natural", "artificial"):
+            m_query = m_query.filter_by(monopoly_type=type_filter)
         if search:
             m_query = m_query.filter(
                 db.or_(
@@ -175,7 +175,6 @@ def index():
         monopolies = m_query.all()
         if monopolies:
             grouped[industry.name] = {
-                "type": industry.monopoly_type,
                 "monopolies": monopolies,
             }
 
@@ -250,9 +249,7 @@ def api_monopolies():
 
     query = Monopoly.query
     if type_filter in ("natural", "artificial"):
-        query = query.join(Industry).filter(
-            Industry.monopoly_type == type_filter
-        )
+        query = query.filter(Monopoly.monopoly_type == type_filter)
     if industry_filter and industry_filter.isdigit():
         query = query.filter(Monopoly.industry_id == int(industry_filter))
 
@@ -260,6 +257,7 @@ def api_monopolies():
         {
             "id": m.id, "name": m.name, "inn": m.inn,
             "industry": m.industry.name,
+            "monopoly_type": m.monopoly_type,
         }
         for m in query.all()
     ])
@@ -316,28 +314,57 @@ class SecureModelView(ModelView):
 
 
 class IndustryAdmin(SecureModelView):
-    column_list = ("id", "name", "monopoly_type")
-    form_columns = ("name", "monopoly_type")
+    column_list = ("id", "name")
+    form_columns = ("name",)
     column_labels = {
         "name": "Название отрасли",
-        "monopoly_type": "Тип монополии (natural / artificial)",
+    }
+    form_args = {
+        "name": {"validators": [DataRequired()]},
     }
 
 
+from wtforms import SelectField
+
+
 class MonopolyAdmin(SecureModelView):
-    column_list = ("id", "name", "inn", "industry", "website")
-    form_columns = ("name", "inn", "industry", "description", "website")
+    column_list = ("id", "name", "inn", "industry", "monopoly_type_label", "website")
+    form_columns = ("name", "inn", "industry", "monopoly_type", "description", "website")
     column_labels = {
         "name": "Название",
         "inn": "ИНН",
         "industry": "Отрасль",
+        "monopoly_type": "Тип монополии",
+        "monopoly_type_label": "Тип монополии",
         "description": "Описание",
         "website": "Сайт",
     }
+
+    # Список допустимых значений в выпадающем списке
+    form_choices = {
+        "monopoly_type": [
+            ("natural", "Естественная"),
+            ("artificial", "Искусственная"),
+        ]
+    }
+
     form_args = {
         "name": {"validators": [DataRequired()]},
         "inn": {"validators": [DataRequired()]},
         "industry": {"validators": [DataRequired()]},
+        "monopoly_type": {"validators": [DataRequired()]},
+    }
+
+    # Чтобы в column_list отображалась русская подпись, а не natural/artificial
+    @property
+    def _type_labels(self):
+        return {"natural": "Естественная", "artificial": "Искусственная"}
+
+    def _monopoly_type_label_formatter(self, context, model, name):
+        return self._type_labels.get(model.monopoly_type, model.monopoly_type)
+
+    column_formatters = {
+        "monopoly_type_label": _monopoly_type_label_formatter,
     }
 
 

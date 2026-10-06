@@ -39,12 +39,15 @@
 {% if grouped %}
     {% for industry_name, data in grouped.items() %}
     <section class="industry">
-        <h2>{{ industry_name }} <span class="badge badge-{{ data.type }}">{{ data.type }}</span></h2>
+        <h2>{{ industry_name }}</h2>
         <div class="cards">
             {% for m in data.monopolies %}
             <a href="{{ url_for('monopoly_detail', monopoly_id=m.id) }}" class="card fade-in">
                 <h3>{{ m.name }}</h3>
                 <p class="muted">ИНН: {{ m.inn }}</p>
+                <span class="badge badge-{{ m.monopoly_type }}">
+                    {{ 'Естественная' if m.monopoly_type == 'natural' else 'Искусственная' }}
+                </span>
             </a>
             {% endfor %}
         </div>

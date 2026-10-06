@@ -23,12 +23,12 @@ def seed_metrics():
 
 def seed_industries():
     industries = [
-        {"name": "Топливно-энергетический комплекс", "monopoly_type": "natural"},
-        {"name": "Транспорт и логистика", "monopoly_type": "natural"},
-        {"name": "Связь и телекоммуникации", "monopoly_type": "natural"},
-        {"name": "ЖКХ", "monopoly_type": "natural"},
-        {"name": "Металлургия", "monopoly_type": "artificial"},
-        {"name": "Нефтегазохимия", "monopoly_type": "artificial"},
+        {"name": "Топливно-энергетический комплекс"},
+        {"name": "Транспорт и логистика"},
+        {"name": "Связь и телекоммуникации"},
+        {"name": "ЖКХ"},
+        {"name": "Металлургия"},
+        {"name": "Нефтегазохимия"},
     ]
     for i in industries:
         if not Industry.query.filter_by(name=i["name"]).first():
