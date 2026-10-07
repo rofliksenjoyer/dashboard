@@ -149,153 +149,316 @@ def logout():
 # ---------- Публичные маршруты ----------
 @app.route("/")
 def index():
-    type_filter = request.args.get("type")
-    industry_filter = request.args.get("industry")
-    search = request.args.get("q", "").strip()
-
-    query = Industry.query
-
-    if industry_filter and industry_filter.isdigit():
-        query = query.filter_by(id=int(industry_filter))
-
-    industries = query.all()
-
-    grouped = {}
-    for industry in industries:
-        m_query = Monopoly.query.filter_by(industry_id=industry.id)
-        if type_filter in ("natural", "artificial"):
-            m_query = m_query.filter_by(monopoly_type=type_filter)
-        if search:
-            m_query = m_query.filter(
-                db.or_(
-                    Monopoly.name.ilike(f"%{search}%"),
-                    Monopoly.inn.ilike(f"%{search}%"),
-                )
-            )
-        monopolies = m_query.all()
-        if monopolies:
-            grouped[industry.name] = {
-                "monopolies": monopolies,
-            }
-
-    all_industries = Industry.query.order_by(Industry.name).all()
-
-    return render_template(
-        "index.html",
-        grouped=grouped,
-        current_filter=type_filter,
-        current_industry=industry_filter,
-        all_industries=all_industries,
-        search=search,
-    )
-
+    return render_template("index.html")
 
 @app.route("/monopoly/<int:monopoly_id>")
 def monopoly_detail(monopoly_id):
-    m = Monopoly.query.get_or_404(monopoly_id)
-    periods = (
-        Period.query.filter_by(monopoly_id=monopoly_id)
-        .order_by(Period.year)
-        .all()
-    )
-
-    chart_data = []
-    for p in periods:
-        ratios = calculate_ratios(p)
-        hhi_year = calculate_hhi(m.industry_id, p.year)
-        chart_data.append({
-            "period": str(p.year),
-            "revenue": get_metric_value(p, "revenue"),
-            "net_profit": get_metric_value(p, "net_profit"),
-            "assets": get_metric_value(p, "assets"),
-            "equity": get_metric_value(p, "equity"),
-            "ratios": ratios,
-            "hhi": hhi_year,
-        })
-
-    latest = chart_data[-1] if chart_data else None
-
-    court_cases = CourtCase.query.filter_by(monopoly_id=monopoly_id).all()
-
-    hhi = None
-    market_shares = []
-    market_share = None
-    if periods:
-        latest_year = periods[-1].year
-        hhi = calculate_hhi(m.industry_id, latest_year)
-        market_shares = calculate_market_shares(m.industry_id, latest_year)
-        for row in market_shares:
-            if row["name"] == m.name:
-                market_share = row["share"]
-                break
-
-    return render_template(
-        "monopoly.html",
-        monopoly=m,
-        chart_data=chart_data,
-        latest=latest,
-        court_cases=court_cases,
-        hhi=hhi,
-        market_shares=market_shares,
-        market_share=market_share,
-    )
-
+    m = Monopoly.query.get(monopoly_id)
+    if not m:
+        abort(404)
+    return render_template("monopoly.html", monopoly_id=m.id, monopoly_name=m.name)
 
 # ---------- API ----------
+from flask import jsonify, request, abort
+
+
+def api_response(data, meta=None, status=200):
+    payload = {"data": data}
+    if meta is not None:
+        payload["meta"] = meta
+    return jsonify(payload), status
+
+
+def api_error(message, status=400):
+    return jsonify({"error": message}), status
+
+
+# --- Справочник метрик ---
+@app.route("/api/metrics")
+def api_metrics():
+    metrics = Metric.query.order_by(Metric.name).all()
+    data = [
+        {
+            "id": m.id,
+            "code": m.code,
+            "name": m.name,
+            "unit": m.unit,
+        }
+        for m in metrics
+    ]
+    return api_response(data)
+
+
+# --- Отрасли ---
+@app.route("/api/industries")
+def api_industries():
+    industries = Industry.query.order_by(Industry.name).all()
+    data = [
+        {
+            "id": i.id,
+            "name": i.name,
+            "monopolies_count": len(i.monopolies),
+        }
+        for i in industries
+    ]
+    return api_response(data)
+
+
+@app.route("/api/industries/<int:industry_id>")
+def api_industry(industry_id):
+    industry = Industry.query.get(industry_id)
+    if not industry:
+        return api_error("Отрасль не найдена", 404)
+
+    monopolies = [
+        {
+            "id": m.id,
+            "name": m.name,
+            "inn": m.inn,
+            "monopoly_type": m.monopoly_type,
+        }
+        for m in industry.monopolies
+    ]
+
+    return api_response({
+        "id": industry.id,
+        "name": industry.name,
+        "monopolies": monopolies,
+    })
+
+
+@app.route("/api/industries/<int:industry_id>/hhi")
+def api_industry_hhi(industry_id):
+    year_str = request.args.get("year")
+    if not year_str or not year_str.isdigit():
+        return api_error("Параметр year обязателен и должен быть числом")
+
+    industry = Industry.query.get(industry_id)
+    if not industry:
+        return api_error("Отрасль не найдена", 404)
+
+    year = int(year_str)
+    hhi = calculate_hhi(industry_id, year)
+    return api_response({
+        "industry_id": industry_id,
+        "year": year,
+        "hhi": hhi,
+    })
+
+
+@app.route("/api/industries/<int:industry_id>/market-shares")
+def api_industry_market_shares(industry_id):
+    year_str = request.args.get("year")
+    if not year_str or not year_str.isdigit():
+        return api_error("Параметр year обязателен и должен быть числом")
+
+    industry = Industry.query.get(industry_id)
+    if not industry:
+        return api_error("Отрасль не найдена", 404)
+
+    year = int(year_str)
+    shares = calculate_market_shares(industry_id, year)
+    total_revenue = sum(r["revenue"] for r in shares) if shares else 0
+
+    return api_response(
+        shares,
+        meta={
+            "industry_id": industry_id,
+            "industry_name": industry.name,
+            "year": year,
+            "total_revenue": total_revenue,
+            "companies_count": len(shares),
+        },
+    )
+
+
+# --- Монополии ---
 @app.route("/api/monopolies")
 def api_monopolies():
     type_filter = request.args.get("type")
     industry_filter = request.args.get("industry")
+    search = request.args.get("q", "").strip()
+    limit = request.args.get("limit", type=int)
+    offset = request.args.get("offset", 0, type=int)
 
     query = Monopoly.query
     if type_filter in ("natural", "artificial"):
         query = query.filter(Monopoly.monopoly_type == type_filter)
     if industry_filter and industry_filter.isdigit():
         query = query.filter(Monopoly.industry_id == int(industry_filter))
+    if search:
+        query = query.filter(
+            db.or_(
+                Monopoly.name.ilike(f"%{search}%"),
+                Monopoly.inn.ilike(f"%{search}%"),
+            )
+        )
 
-    return jsonify([
+    total = query.count()
+    if limit:
+        query = query.limit(limit).offset(offset)
+
+    data = [
         {
-            "id": m.id, "name": m.name, "inn": m.inn,
-            "industry": m.industry.name,
+            "id": m.id,
+            "name": m.name,
+            "inn": m.inn,
             "monopoly_type": m.monopoly_type,
+            "industry": {
+                "id": m.industry.id,
+                "name": m.industry.name,
+            },
+            "website": m.website,
         }
         for m in query.all()
-    ])
+    ]
+
+    return api_response(
+        data,
+        meta={
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        },
+    )
 
 
-@app.route("/api/monopoly/<int:monopoly_id>/data")
-def api_monopoly_data(monopoly_id):
+@app.route("/api/monopolies/<int:monopoly_id>")
+def api_monopoly(monopoly_id):
+    m = Monopoly.query.get(monopoly_id)
+    if not m:
+        return api_error("Монополия не найдена", 404)
+
     periods = (
         Period.query.filter_by(monopoly_id=monopoly_id)
         .order_by(Period.year)
         .all()
     )
-    return jsonify([
-        {
-            "period": str(p.year),
+
+    periods_data = []
+    for p in periods:
+        values = {}
+        for pv in p.values:
+            values[pv.metric.code] = {
+                "name": pv.metric.name,
+                "unit": pv.metric.unit,
+                "value": float(pv.value),
+            }
+        periods_data.append({
+            "year": p.year,
+            "values": values,
             "ratios": calculate_ratios(p),
+            "hhi": calculate_hhi(m.industry_id, p.year),
+        })
+
+    court_cases = [
+        {
+            "id": c.id,
+            "case_number": c.case_number,
+            "court_name": c.court_name,
+            "decision_date": c.decision_date.isoformat() if c.decision_date else None,
+            "decision_link": c.decision_link,
+            "summary": c.summary,
+            "status": c.status,
+        }
+        for c in m.court_cases
+    ]
+
+    return api_response({
+        "id": m.id,
+        "name": m.name,
+        "inn": m.inn,
+        "monopoly_type": m.monopoly_type,
+        "description": m.description,
+        "website": m.website,
+        "industry": {
+            "id": m.industry.id,
+            "name": m.industry.name,
+        },
+        "periods": periods_data,
+        "court_cases": court_cases,
+    })
+
+
+@app.route("/api/monopolies/<int:monopoly_id>/periods")
+def api_monopoly_periods(monopoly_id):
+    m = Monopoly.query.get(monopoly_id)
+    if not m:
+        return api_error("Монополия не найдена", 404)
+
+    periods = (
+        Period.query.filter_by(monopoly_id=monopoly_id)
+        .order_by(Period.year)
+        .all()
+    )
+
+    data = [
+        {
+            "id": p.id,
+            "year": p.year,
+            "values_count": len(p.values),
         }
         for p in periods
-    ])
+    ]
+    return api_response(data, meta={"monopoly_id": monopoly_id, "monopoly_name": m.name})
 
 
-@app.route("/api/hhi/<int:industry_id>")
-def api_hhi(industry_id):
-    year_str = request.args.get("year")
-    if not year_str:
-        abort(400, "year обязателен")
-    year = int(year_str)
-    return jsonify({"hhi": calculate_hhi(industry_id, year)})
+@app.route("/api/monopolies/<int:monopoly_id>/periods/<int:year>")
+def api_monopoly_period(monopoly_id, year):
+    m = Monopoly.query.get(monopoly_id)
+    if not m:
+        return api_error("Монополия не найдена", 404)
+
+    period = Period.query.filter_by(
+        monopoly_id=monopoly_id, year=year
+    ).first()
+    if not period:
+        return api_error(f"Период {year} не найден", 404)
+
+    values = {}
+    for pv in period.values:
+        values[pv.metric.code] = {
+            "name": pv.metric.name,
+            "unit": pv.metric.unit,
+            "value": float(pv.value),
+        }
+
+    return api_response({
+        "monopoly_id": monopoly_id,
+        "year": year,
+        "values": values,
+        "ratios": calculate_ratios(period),
+        "hhi": calculate_hhi(m.industry_id, year),
+    })
 
 
-@app.route("/api/market-shares/<int:industry_id>")
-def api_market_shares(industry_id):
-    year_str = request.args.get("year")
-    if not year_str:
-        abort(400, "year обязателен")
-    year = int(year_str)
-    return jsonify(calculate_market_shares(industry_id, year))
+# --- Судебные дела ---
+@app.route("/api/court-cases")
+def api_court_cases():
+    monopoly_filter = request.args.get("monopoly_id")
+    status_filter = request.args.get("status")
 
+    query = CourtCase.query
+    if monopoly_filter and monopoly_filter.isdigit():
+        query = query.filter(CourtCase.monopoly_id == int(monopoly_filter))
+    if status_filter in ("won", "lost", "pending"):
+        query = query.filter(CourtCase.status == status_filter)
+
+    data = [
+        {
+            "id": c.id,
+            "monopoly_id": c.monopoly_id,
+            "monopoly_name": c.monopoly.name if c.monopoly else None,
+            "case_number": c.case_number,
+            "court_name": c.court_name,
+            "decision_date": c.decision_date.isoformat() if c.decision_date else None,
+            "decision_link": c.decision_link,
+            "summary": c.summary,
+            "status": c.status,
+        }
+        for c in query.order_by(CourtCase.id).all()
+    ]
+    return api_response(data, meta={"total": len(data)})
 
 # ---------- Flask-Admin ----------
 class SecureAdminIndexView(AdminIndexView):
