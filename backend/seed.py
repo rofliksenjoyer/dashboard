@@ -1,5 +1,5 @@
 from extensions import db
-from models import Metric, Industry
+from models import Metric, Industry, Country
 
 
 def seed_metrics():
@@ -33,4 +33,17 @@ def seed_industries():
     for i in industries:
         if not Industry.query.filter_by(name=i["name"]).first():
             db.session.add(Industry(**i))
+    db.session.commit()
+
+
+def seed_countries():
+    countries = [
+        {"name": "Россия", "code": "RU"},
+        {"name": "США", "code": "US"},
+        {"name": "Китай", "code": "CN"},
+        {"name": "Германия", "code": "DE"},
+    ]
+    for c in countries:
+        if not Country.query.filter_by(code=c["code"]).first():
+            db.session.add(Country(**c))
     db.session.commit()

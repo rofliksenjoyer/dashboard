@@ -15,9 +15,20 @@ document.addEventListener('DOMContentLoaded', () => {
             renderBasicMetrics(m);
             renderCourtCases(m.court_cases);
         })
-        .catch(err => {
-            console.error('Ошибка загрузки монополии:', err);
+        .catch(err => console.error('Ошибка загрузки монополии:', err));
+
+    // Модальное окно
+    const modal = document.getElementById('chart-modal');
+    if (modal) {
+        modal.addEventListener('click', e => {
+            if (e.target === modal) closeChartModal();
         });
+        const closeBtn = modal.querySelector('.chart-modal-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeChartModal);
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeChartModal();
+        });
+    }
 });
 
 
@@ -50,6 +61,13 @@ function renderTopMetrics(m) {
     }
 
     let html = '<div class="metric-panel">';
+    if (m.country) {
+        html += `
+            <div class="metric-item">
+                <span class="metric-label">Страна</span>
+                <span class="metric-value">${m.country.name}</span>
+            </div>`;
+    }
     if (latest.ratios.hhi != null) {
         html += `
             <div class="metric-item">
@@ -69,6 +87,8 @@ function renderTopMetrics(m) {
 }
 
 
+const chartRegistry = {};
+
 function safeChart(elId, builder) {
     const el = document.getElementById(elId);
     if (!el) {
@@ -79,8 +99,43 @@ function safeChart(elId, builder) {
         const chart = echarts.init(el);
         builder(chart);
         window.addEventListener('resize', () => chart.resize());
+        chartRegistry[elId] = chart.getOption();
+        el.addEventListener('click', () => openChartModal(elId));
     } catch (e) {
         console.error(`Ошибка инициализации графика #${elId}:`, e);
+    }
+}
+
+
+let modalChart = null;
+
+function openChartModal(elId) {
+    const modal = document.getElementById('chart-modal');
+    const body = document.getElementById('chart-modal-body');
+    if (!modal || !body) return;
+
+    body.innerHTML = '';
+    modal.classList.add('open');
+
+    modalChart = echarts.init(body);
+    const options = chartRegistry[elId];
+    if (options) {
+        const enlarged = JSON.parse(JSON.stringify(options));
+        if (enlarged.title?.[0]) enlarged.title[0].textStyle = { fontSize: 18 };
+        if (enlarged.legend?.[0]) enlarged.legend[0].textStyle = { fontSize: 14 };
+        modalChart.setOption(enlarged);
+    }
+    setTimeout(() => modalChart.resize(), 50);
+}
+
+
+function closeChartModal() {
+    const modal = document.getElementById('chart-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    if (modalChart) {
+        modalChart.dispose();
+        modalChart = null;
     }
 }
 
@@ -98,7 +153,7 @@ function renderCharts(m) {
     const autonomy = periods.map(p => p.ratios?.autonomy ?? null);
     const debtLoad = periods.map(p => p.ratios?.debt_load ?? null);
 
-    // 1. Выручка и прибыль — линии
+    // 1. Выручка и прибыль
     safeChart('chart-revenue', chart => {
         chart.setOption({
             title: { text: 'Динамика выручки и прибыли', textStyle: { fontSize: 14 } },
@@ -114,7 +169,7 @@ function renderCharts(m) {
         });
     });
 
-    // 2. Рентабельность — столбцы
+    // 2. Рентабельность
     safeChart('chart-ratios', chart => {
         chart.setOption({
             title: { text: 'Показатели рентабельности', textStyle: { fontSize: 14 } },
@@ -130,7 +185,7 @@ function renderCharts(m) {
         });
     });
 
-    // 3. Индекс Лернера — столбцы
+    // 3. Индекс Лернера
     safeChart('chart-lerner', chart => {
         chart.setOption({
             title: { text: 'Индекс Лернера (монопольная власть)', textStyle: { fontSize: 14 } },
@@ -139,18 +194,12 @@ function renderCharts(m) {
             xAxis: { type: 'category', data: labels },
             yAxis: { type: 'value' },
             series: [
-                {
-                    name: 'Индекс Лернера',
-                    type: 'bar',
-                    data: lerner,
-                    itemStyle: { color: '#b45309' },
-                    barWidth: '50%'
-                }
+                { name: 'Индекс Лернера', type: 'bar', data: lerner, itemStyle: { color: '#b45309' }, barWidth: '50%' }
             ]
         });
     });
 
-    // 4. HHI — столбцы
+    // 4. HHI
     safeChart('chart-hhi', chart => {
         chart.setOption({
             title: { text: 'HHI по отрасли', textStyle: { fontSize: 14 } },
@@ -159,18 +208,12 @@ function renderCharts(m) {
             xAxis: { type: 'category', data: labels },
             yAxis: { type: 'value', min: 0, max: 10000 },
             series: [
-                {
-                    name: 'HHI',
-                    type: 'bar',
-                    data: hhi,
-                    itemStyle: { color: '#1f3a8a' },
-                    barWidth: '50%'
-                }
+                { name: 'HHI', type: 'bar', data: hhi, itemStyle: { color: '#1f3a8a' }, barWidth: '50%' }
             ]
         });
     });
 
-    // 4. Автономия — линия
+    // 5. Автономия
     safeChart('chart-autonomy', chart => {
         chart.setOption({
             title: { text: 'Коэффициент автономии', textStyle: { fontSize: 14 } },
@@ -184,7 +227,7 @@ function renderCharts(m) {
         });
     });
 
-    // 5. Долговая нагрузка — линия
+    // 6. Долговая нагрузка
     safeChart('chart-debt-load', chart => {
         chart.setOption({
             title: { text: 'Коэффициент долговой нагрузки', textStyle: { fontSize: 14 } },
@@ -198,20 +241,28 @@ function renderCharts(m) {
         });
     });
 
-    // 6. Radar — комплексная оценка
-    renderRadar(periods);
+    // 7. Темпы прироста
+    const growth = m.growth_rates || [];
+    const growthLabels = growth.map(g => String(g.year));
+    const revenueGrowth = growth.map(g => g.revenue_growth);
+    const profitGrowth = growth.map(g => g.profit_growth);
 
-    // Круговая диаграмма доли рынка
-    const latest = periods[periods.length - 1];
-    if (latest && m.industry?.id) {
-        fetch(`/api/industries/${m.industry.id}/market-shares?year=${latest.year}`)
-            .then(r => r.json())
-            .then(res => renderMarketShares(res.data || [], m.name, latest.year));
-    }
-}
+    safeChart('chart-growth', chart => {
+        chart.setOption({
+            title: { text: 'Темпы прироста, % к предыдущему году', textStyle: { fontSize: 14 } },
+            tooltip: { trigger: 'axis', valueFormatter: v => v != null ? v + '%' : '—' },
+            legend: { data: ['Прирост выручки', 'Прирост прибыли'], bottom: 0 },
+            grid: { left: 60, right: 20, top: 40, bottom: 50 },
+            xAxis: { type: 'category', data: growthLabels },
+            yAxis: { type: 'value', axisLabel: { formatter: '{value}%' } },
+            series: [
+                { name: 'Прирост выручки', type: 'bar', data: revenueGrowth, itemStyle: { color: '#059669' } },
+                { name: 'Прирост прибыли', type: 'bar', data: profitGrowth, itemStyle: { color: '#dc2626' } }
+            ]
+        });
+    });
 
-
-function renderRadar(periods) {
+    // 8. Radar
     safeChart('chart-radar', chart => {
         const norm = (value, max) => {
             if (value == null) return 0;
@@ -235,17 +286,14 @@ function renderRadar(periods) {
         });
 
         chart.setOption({
-            title: { text: 'Комплексная оценка', textStyle: { fontSize: 14 } },
+            title: { text: 'Комплексная оценка (нормализовано, %)', textStyle: { fontSize: 14 } },
             tooltip: {
                 trigger: 'item',
                 formatter: params => {
                     const raw = params.data.raw || [];
                     const names = [
-                        'Рентабельность продаж',
-                        'ROE',
-                        'Автономия',
-                        'Долговая нагрузка',
-                        'Лернер'
+                        'Рентабельность продаж', 'ROE', 'Автономия',
+                        'Долговая нагрузка', 'Лернер'
                     ];
                     let html = `<b>${params.name}</b><br/>`;
                     names.forEach((n, i) => {
@@ -276,6 +324,14 @@ function renderRadar(periods) {
             }]
         });
     });
+
+    // 9. Доля рынка
+    const latest = periods[periods.length - 1];
+    if (latest && m.industry?.id && m.country?.id) {
+        fetch(`/api/industries/${m.industry.id}/market-shares?year=${latest.year}&country=${m.country.id}`)
+            .then(r => r.json())
+            .then(res => renderMarketShares(res.data || [], m.name, latest.year));
+    }
 }
 
 
@@ -307,35 +363,42 @@ function renderMarketShares(shares, monopolyName, year) {
 
 function renderBasicMetrics(m) {
     const periods = m.periods || [];
-    const latest = periods[periods.length - 1];
     const container = document.getElementById('basic-metrics');
 
-    if (!latest) {
+    if (!periods.length) {
         container.innerHTML = '';
         return;
     }
 
-    const values = latest.values || {};
-    const revenue = values.revenue?.value;
-    const equity = values.equity?.value;
-    const assets = values.assets?.value;
+    let rows = '';
+    periods.forEach(p => {
+        const values = p.values || {};
+        rows += `
+            <tr>
+                <td>${p.year}</td>
+                <td>${fmt(values.revenue?.value)}</td>
+                <td>${fmt(values.equity?.value)}</td>
+                <td>${fmt(values.assets?.value)}</td>
+                <td>${fmt(values.net_profit?.value)}</td>
+                <td>${fmt(values.credits?.value)}</td>
+            </tr>`;
+    });
 
     container.innerHTML = `
-        <h2>Базовые показатели за ${latest.year} год</h2>
-        <div class="metric-panel">
-            <div class="metric-item">
-                <span class="metric-label">Выручка от продаж</span>
-                <span class="metric-value">${fmt(revenue)}</span>
-            </div>
-            <div class="metric-item">
-                <span class="metric-label">Собственный капитал</span>
-                <span class="metric-value">${fmt(equity)}</span>
-            </div>
-            <div class="metric-item">
-                <span class="metric-label">Активы</span>
-                <span class="metric-value">${fmt(assets)}</span>
-            </div>
-        </div>`;
+        <h2>Базовые показатели по годам (млн руб.)</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Год</th>
+                    <th>Выручка от продаж</th>
+                    <th>Собственный капитал</th>
+                    <th>Активы</th>
+                    <th>Чистая прибыль</th>
+                    <th>Кредиты и займы</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>`;
 }
 
 

@@ -20,17 +20,24 @@
     <div id="chart-hhi" class="chart"></div>
     <div id="chart-autonomy" class="chart"></div>
     <div id="chart-debt-load" class="chart"></div>
+    <div id="chart-growth" class="chart"></div>
     <div id="chart-radar" class="chart"></div>
 </div>
 
 <div class="chart chart-wide" id="chart-market-share"></div>
 
-<!-- Базовые показатели внизу — то, что я ошибочно убрал -->
 <div id="basic-metrics"></div>
 
 <h2>Судебные дела</h2>
 <div id="court-cases-container">
     <p class="muted">Загрузка...</p>
+</div>
+
+<div id="chart-modal" class="chart-modal">
+    <div class="chart-modal-content">
+        <button class="chart-modal-close" aria-label="Закрыть">×</button>
+        <div id="chart-modal-body"></div>
+    </div>
 </div>
 
 <script>

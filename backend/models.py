@@ -1,6 +1,21 @@
 from extensions import db
 
 
+class Country(db.Model):
+    __tablename__ = "countries"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    code = db.Column(db.String(3), nullable=False, unique=True)  # ISO: RU, US, CN
+
+    monopolies = db.relationship(
+        "Monopoly", back_populates="country",
+        lazy=True, cascade="all, delete-orphan",
+    )
+
+    def __repr__(self):
+        return f"<Country {self.code}>"
+
+
 class Industry(db.Model):
     __tablename__ = "industries"
     id = db.Column(db.Integer, primary_key=True)
@@ -19,7 +34,10 @@ class Monopoly(db.Model):
     __tablename__ = "monopolies"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
-    inn = db.Column(db.String(12), unique=True, nullable=False)
+    inn = db.Column(db.String(12), nullable=False)
+    country_id = db.Column(
+        db.Integer, db.ForeignKey("countries.id"), nullable=False
+    )
     industry_id = db.Column(
         db.Integer, db.ForeignKey("industries.id"), nullable=False
     )
@@ -27,6 +45,7 @@ class Monopoly(db.Model):
     description = db.Column(db.Text, nullable=True)
     website = db.Column(db.String(200), nullable=True)
 
+    country = db.relationship("Country", back_populates="monopolies")
     industry = db.relationship("Industry", back_populates="monopolies")
     periods = db.relationship(
         "Period", back_populates="monopoly",
@@ -37,12 +56,15 @@ class Monopoly(db.Model):
         lazy=True, cascade="all, delete-orphan",
     )
 
+    __table_args__ = (
+        db.UniqueConstraint("country_id", "inn"),
+    )
+
     def __repr__(self):
         return f"<Monopoly {self.name}>"
 
 
 class Period(db.Model):
-    """Годовой период отчётности монополии."""
     __tablename__ = "periods"
     id = db.Column(db.Integer, primary_key=True)
     monopoly_id = db.Column(
@@ -65,7 +87,6 @@ class Period(db.Model):
 
 
 class Metric(db.Model):
-    """Справочник финансовых показателей из отчётности."""
     __tablename__ = "metrics"
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(50), unique=True, nullable=False)
