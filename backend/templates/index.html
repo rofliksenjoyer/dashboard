@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Дашборд рыночных структур{% endblock %}
+
+{% block content %}
+<div class="dash-hero">
+    <h1>Дашборд рыночных структур</h1>
+    <p>Выберите контур анализа</p>
+</div>
+
+<div class="dash-scopes dash-scopes-3">
+    <a href="{{ url_for('scope_view', scope='all') }}" class="scope-card scope-card-all" id="scope-all">
+        <h2>Весь мир</h2>
+        <p>Сводный анализ по всем странам: национальные и глобальные рынки в одной картине</p>
+        <div class="scope-stats" id="stats-all">Загрузка…</div>
+        <span class="scope-go">Перейти к анализу &rarr;</span>
+    </a>
+
+    <a href="{{ url_for('scope_view', scope='world') }}" class="scope-card scope-card-world" id="scope-world">
+        <h2>Глобальные рынки</h2>
+        <p>Мировые монополии и транснациональные корпорации: технологические платформы, аэрокосмос, автопром</p>
+        <div class="scope-stats" id="stats-world">Загрузка…</div>
+        <span class="scope-go">Перейти к анализу &rarr;</span>
+    </a>
+
+    <a href="{{ url_for('scope_view', scope='ru') }}" class="scope-card scope-card-ru" id="scope-ru">
+        <h2>Национальные рынки</h2>
+        <p>Монополизированные отрасли Российской Федерации: от естественных монополий до цифровых экосистем</p>
+        <div class="scope-stats" id="stats-ru">Загрузка…</div>
+        <span class="scope-go">Перейти к анализу &rarr;</span>
+    </a>
+</div>
+
+<div class="dash-totals" id="dash-totals"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
+{% endblock %}

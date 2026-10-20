@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if scope == 'all' %}Весь мир{% elif scope == 'world' %}Глобальные рынки{% else %}Национальные рынки{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{{ url_for('index') }}">Главное меню</a>
+    <span class="sep">/</span>
+    <span>
+        {% if scope == 'all' %}Весь мир
+        {% elif scope == 'world' %}Глобальные рынки
+        {% else %}Национальные рынки{% endif %}
+    </span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        {% if scope == 'all' %}Весь мир
+        {% elif scope == 'world' %}Глобальные рынки
+        {% else %}Национальные рынки{% endif %}
+        — Рейтинг отраслей
+    </h1>
+    <div class="year-picker">
+        <label>Год:</label>
+        <select id="year-select"></select>
+    </div>
+</div>
+
+<div class="legend-bar">
+    <span><i class="dot" style="background:#ef4444"></i> Высокая (&gt;70%)</span>
+    <span><i class="dot" style="background:#f97316"></i> Умеренная (40–70%)</span>
+    <span><i class="dot" style="background:#22c55e"></i> Конкурентная (&lt;40%)</span>
+</div>
+
+<div id="bars-container">
+    <p class="muted">Загрузка…</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const SCOPE = "{{ scope }}";
+</script>
+<script src="{{ url_for('static', filename='js/scope.js') }}"></script>
+{% endblock %}

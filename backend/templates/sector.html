@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}{{ industry_name }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{{ url_for('index') }}">Главное меню</a>
+    <span class="sep">/</span>
+    <a href="{{ url_for('scope_view', scope=scope) }}">
+        {% if scope == 'all' %}Весь мир
+        {% elif scope == 'world' %}Глобальные рынки
+        {% else %}Национальные рынки{% endif %}
+    </a>
+    <span class="sep">/</span>
+    <span>{{ industry_name }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 id="sector-title">{{ industry_name }}</h1>
+    <div class="year-picker">
+        <label>Год:</label>
+        <select id="year-select"></select>
+    </div>
+</div>
+
+<div class="sector-info" id="sector-info"></div>
+
+<h2>Динамика концентрации</h2>
+<div class="chart chart-wide" id="chart-hhi-dynamics"></div>
+
+<h2>Компании отрасли</h2>
+<div class="company-grid" id="company-grid">
+    <p class="muted">Загрузка…</p>
+</div>
+
+<div id="chart-modal" class="chart-modal">
+    <div class="chart-modal-content">
+        <button class="chart-modal-close" aria-label="Закрыть">×</button>
+        <div id="chart-modal-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const SCOPE = "{{ scope }}";
+    const INDUSTRY_ID = {{ industry_id }};
+</script>
+<script src="{{ url_for('static', filename='js/sector.js') }}"></script>
+{% endblock %}
