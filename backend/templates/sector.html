@@ -7,9 +7,7 @@
     <a href="{{ url_for('index') }}">Главное меню</a>
     <span class="sep">/</span>
     <a href="{{ url_for('scope_view', scope=scope) }}">
-        {% if scope == 'all' %}Весь мир
-        {% elif scope == 'world' %}Глобальные рынки
-        {% else %}Национальные рынки{% endif %}
+        {% if scope == 'world' %}Глобальные рынки{% else %}Национальные рынки{% endif %}
     </a>
     <span class="sep">/</span>
     <span>{{ industry_name }}</span>
@@ -27,6 +25,10 @@
 
 <div class="sector-info" id="sector-info"></div>
 
+<div id="sector-flags" class="sector-flags">
+    <p class="muted">Загрузка…</p>
+</div>
+
 <h2>Динамика концентрации</h2>
 <div class="chart chart-wide" id="chart-hhi-dynamics"></div>
 
@@ -39,6 +41,13 @@
     <div class="chart-modal-content">
         <button class="chart-modal-close" aria-label="Закрыть">×</button>
         <div id="chart-modal-body"></div>
+    </div>
+</div>
+
+<div id="note-modal" class="note-modal">
+    <div class="note-modal-content">
+        <button class="note-modal-close" aria-label="Закрыть">×</button>
+        <div id="note-modal-body"></div>
     </div>
 </div>
 {% endblock %}

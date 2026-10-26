@@ -40,11 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 container.innerHTML = '';
-                sectors.forEach((s, i) => {
+                sectors.forEach(s => {
                     const row = document.createElement('a');
-                    row.className = 'bar-row fade-in';
+                    row.className = 'bar-row';
                     row.href = `/scope/${SCOPE}/industry/${s.id}`;
-                    row.style.animationDelay = (i * 0.05) + 's';
                     row.innerHTML = `
                         <div class="bar-row-head">
                             <span class="bar-name">${escapeHtml(s.name)}</span>
@@ -52,16 +51,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="bar-share">${s.top_share.toFixed(1)}%</span>
                         </div>
                         <div class="bar-track">
-                            <div class="bar-fill" style="width:0%; background:${barColor(s.top_share)}">
+                            <div class="bar-fill" style="width:${s.top_share}%; background:${barColor(s.top_share)}">
                                 ${s.top_share > 15 ? s.top_share.toFixed(1) + '%' : ''}
                             </div>
                         </div>
                         <div class="bar-sub muted">${s.companies_count} компан. · выручка ${fmtMoney(s.total_revenue)}</div>
                     `;
                     container.appendChild(row);
-                    setTimeout(() => {
-                        row.querySelector('.bar-fill').style.width = s.top_share + '%';
-                    }, 60 + i * 90);
                 });
             });
     }

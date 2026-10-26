@@ -1,19 +1,36 @@
 """
 Уровни анализа:
-1. Контур (market_scope: all / world / ru) -> рейтинг отраслей
-2. Отрасль в контуре -> HHI, доли рынка, компании, динамика HHI
-3. Компания (монополия) -> паспорт (без HHI и без Лернера)
+1. Контур (market_scope: world / ru) -> рейтинг отраслей
+2. Отрасль в контуре -> HHI, доли рынка, компании, заметки по странам
+3. Компания (монополия) -> паспорт + метрики
 """
 from extensions import db
 from models import (
-    Country, Industry, Monopoly, Period, PeriodValue, Metric
+    Country, Industry, MonopolyType, Monopoly, Period, PeriodValue, Metric,
+    CountryIndustryNote,
 )
 
 
-VALID_SCOPES = ("all", "ru", "world")
+VALID_SCOPES = ("ru", "world")
 
+INFO_METRIC_CODES = (
+    "personnel_costs", "amortization",
+    "operating_loss", "financial_income", "financial_expenses",
+)
 
-# ---------- базовое ----------
+TABLE_METRIC_CODES = (
+    ("revenue",           "Выручка от продаж"),
+    ("net_profit",        "Чистая прибыль (убыток)"),
+    ("assets",            "Активы"),
+    ("equity",            "Собственный капитал"),
+    ("credits",           "Кредиты и займы"),
+    ("personnel_costs",   "Затраты на персонал"),
+    ("amortization",      "Амортизация"),
+    ("operating_loss",    "Убыток от операционной деятельности"),
+    ("financial_income",  "Финансовые доходы"),
+    ("financial_expenses","Финансовые расходы"),
+)
+
 
 def get_metric_value(period, code):
     m = Metric.query.filter_by(code=code).first()
@@ -37,12 +54,13 @@ def _period_for(monopoly_id, year):
 
 
 def _countries_for_scope(scope):
-    if scope == "all":
-        return Country.query.order_by(Country.name).all()
-    return Country.query.filter_by(market_scope=scope).order_by(Country.name).all()
+    return (
+        Country.query
+        .filter_by(market_scope=scope)
+        .order_by(Country.name)
+        .all()
+    )
 
-
-# ---------- HHI / доли ----------
 
 def calculate_market_shares(country_id, industry_id, year):
     monopolies = Monopoly.query.filter_by(
@@ -61,7 +79,6 @@ def calculate_market_shares(country_id, industry_id, year):
                 "name": m.name,
                 "short_name": m.short_name or m.name,
                 "color": m.color,
-                "badge_type": m.badge_type,
                 "revenue": revenue,
             })
 
@@ -85,7 +102,6 @@ def calculate_hhi(country_id, industry_id, year):
 
 
 def _hhi_for_scope(scope, industry_id, year):
-    """HHI по всем странам контура за год."""
     countries = _countries_for_scope(scope)
     shares = []
     for c in countries:
@@ -99,8 +115,6 @@ def _hhi_for_scope(scope, industry_id, year):
         x["share"] = round(x["revenue"] / total * 100, 2)
     return round(sum(x["share"] ** 2 for x in shares), 2)
 
-
-# ---------- Уровень 1: контур ----------
 
 def get_scope_overview(scope, year=None):
     if scope not in VALID_SCOPES:
@@ -153,6 +167,36 @@ def get_scope_overview(scope, year=None):
                 top = shares[0]["share"]
                 max_share = max(max_share, top)
 
+        present_countries = []
+        country_ids_with_data = set()
+
+        for c in countries:
+            own = calculate_market_shares(c.id, ind.id, year)
+            if own:
+                country_ids_with_data.add(c.id)
+
+        all_notes = CountryIndustryNote.query.filter_by(industry_id=ind.id).all()
+        for note in all_notes:
+            country_ids_with_data.add(note.country_id)
+
+        all_countries = Country.query.all()
+        c_map = {c.id: c for c in all_countries}
+
+        for cid in country_ids_with_data:
+            c = c_map.get(cid)
+            if not c:
+                continue
+            note = CountryIndustryNote.query.filter_by(
+                country_id=c.id, industry_id=ind.id
+            ).first()
+            present_countries.append({
+                "country_id": c.id,
+                "country_name": c.name,
+                "country_code": c.code,
+                "country_flag": c.flag_emoji,
+                "has_note": bool(note and note.body and note.body.strip()),
+            })
+
         sectors.append({
             "id": ind.id,
             "name": ind.name,
@@ -160,6 +204,7 @@ def get_scope_overview(scope, year=None):
             "top_share": top,
             "hhi": hhi_val,
             "total_revenue": round(rev_sum, 2),
+            "countries": present_countries,
         })
         total_companies += len(shares)
         total_revenue += rev_sum
@@ -180,8 +225,6 @@ def get_scope_overview(scope, year=None):
     }
 
 
-# ---------- Уровень 2: отрасль ----------
-
 def get_sector_detail(scope, industry_id, year=None):
     if scope not in VALID_SCOPES:
         return None
@@ -199,6 +242,17 @@ def get_sector_detail(scope, industry_id, year=None):
     for c in countries:
         shares.extend(calculate_market_shares(c.id, industry_id, year))
 
+    for row in shares:
+        m = Monopoly.query.get(row["monopoly_id"])
+        if m:
+            row["country_id"] = m.country_id
+            row["country_name"] = m.country.name
+            row["country_code"] = m.country.code
+            row["country_flag"] = m.country.flag_emoji
+            row["logo_url"] = m.logo_url
+            row["logo_filename"] = m.logo_filename
+            row["monopoly_type"] = m.monopoly_type.name if m.monopoly_type else None
+
     if not shares:
         return {
             "industry": {"id": industry.id, "name": industry.name},
@@ -209,6 +263,7 @@ def get_sector_detail(scope, industry_id, year=None):
             "hhi_dynamics": [{"year": y, "hhi": None} for y in years],
             "total_revenue": 0,
             "top_share": 0,
+            "country_notes": [],
         }
 
     total = sum(x["revenue"] for x in shares)
@@ -218,12 +273,54 @@ def get_sector_detail(scope, industry_id, year=None):
     shares.sort(key=lambda r: r["revenue"], reverse=True)
     hhi_val = round(sum(x["share"] ** 2 for x in shares), 2)
 
-    # Динамика HHI по всем годам
     hhi_dynamics = []
     for y in years:
         hhi_dynamics.append({
             "year": y,
             "hhi": _hhi_for_scope(scope, industry_id, y),
+        })
+
+    notes = []
+    country_ids_with_data = set()
+    for c in countries:
+        own = calculate_market_shares(c.id, industry_id, year)
+        if own:
+            country_ids_with_data.add(c.id)
+
+    all_notes = CountryIndustryNote.query.filter_by(industry_id=industry_id).all()
+    for note in all_notes:
+        country_ids_with_data.add(note.country_id)
+
+    all_countries = Country.query.all()
+    c_map = {c.id: c for c in all_countries}
+
+    for cid in country_ids_with_data:
+        c = c_map.get(cid)
+        if not c:
+            continue
+        note = CountryIndustryNote.query.filter_by(
+            country_id=c.id, industry_id=industry_id
+        ).first()
+        own = calculate_market_shares(c.id, industry_id, year)
+
+        top_companies = [
+            {"name": x["short_name"] or x["name"], "share": x["share"]}
+            for x in own[:3]
+        ]
+        notes.append({
+            "country_id": c.id,
+            "country_name": c.name,
+            "country_code": c.code,
+            "country_flag": c.flag_emoji,
+            "title": (note.title if note else None) or c.name,
+            "body": note.body if note else None,
+            "hhi": (note.hhi_override if note and note.hhi_override is not None
+                    else calculate_hhi(c.id, industry_id, year)),
+            "top_share": (note.top_share_override if note and note.top_share_override is not None
+                          else (own[0]["share"] if own else 0)),
+            "companies_count": (note.companies_override if note and note.companies_override is not None
+                                else len(own)),
+            "top_companies": top_companies,
         })
 
     return {
@@ -235,10 +332,9 @@ def get_sector_detail(scope, industry_id, year=None):
         "hhi_dynamics": hhi_dynamics,
         "total_revenue": round(total, 2),
         "top_share": shares[0]["share"],
+        "country_notes": notes,
     }
 
-
-# ---------- Уровень 3: паспорт (без HHI, без Лернера) ----------
 
 def calculate_ratios_for_period(period):
     revenue = get_metric_value(period, "revenue")
@@ -297,10 +393,15 @@ def get_company_passport(monopoly_id):
                 "unit": pv.metric.unit,
                 "value": float(pv.value),
             }
+        table = {}
+        for code, _label in TABLE_METRIC_CODES:
+            table[code] = values.get(code, {}).get("value")
+
         periods_data.append({
             "year": p.year,
             "values": values,
             "ratios": calculate_ratios_for_period(p),
+            "table": table,
         })
 
     court_cases = [
@@ -322,8 +423,9 @@ def get_company_passport(monopoly_id):
         "short_name": m.short_name,
         "inn": m.inn,
         "color": m.color,
-        "monopoly_type": m.monopoly_type,
-        "badge_type": m.badge_type,
+        "logo_url": m.logo_url,
+        "logo_filename": m.logo_filename,
+        "monopoly_type": m.monopoly_type.name if m.monopoly_type else None,
         "description": m.description,
         "activity": m.activity,
         "website": m.website,
@@ -336,8 +438,44 @@ def get_company_passport(monopoly_id):
             "name": m.country.name,
             "code": m.country.code,
             "market_scope": m.country.market_scope,
+            "flag_emoji": m.country.flag_emoji,
         },
         "periods": periods_data,
         "growth_rates": calculate_growth_rates(periods),
         "court_cases": court_cases,
+        "table_columns": [
+            {"code": code, "label": label}
+            for code, label in TABLE_METRIC_CODES
+        ],
     }
+
+
+def get_info_metrics(monopoly_id, year=None):
+    if year is None:
+        periods = (
+            Period.query.filter_by(monopoly_id=monopoly_id)
+            .order_by(Period.year.desc()).all()
+        )
+        if not periods:
+            return {"year": None, "items": []}
+        period = periods[0]
+    else:
+        period = Period.query.filter_by(
+            monopoly_id=monopoly_id, year=year
+        ).first()
+        if not period:
+            return {"year": year, "items": []}
+
+    values_map = get_metric_values_map(period)
+    items = []
+    for code in INFO_METRIC_CODES:
+        metric = Metric.query.filter_by(code=code).first()
+        if not metric:
+            continue
+        items.append({
+            "code": code,
+            "name": metric.name,
+            "unit": metric.unit,
+            "value": values_map.get(code),
+        })
+    return {"year": period.year, "items": items}

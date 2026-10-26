@@ -9,12 +9,13 @@ from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
 )
-from wtforms.validators import DataRequired
+from wtforms.validators import DataRequired, Optional, URL
 
 from config import Config
 from extensions import db, migrate
 from models import (
-    Country, Industry, Monopoly, Period, PeriodValue, Metric, CourtCase
+    Country, Industry, MonopolyType, Monopoly, Period, PeriodValue,
+    Metric, CourtCase, CountryIndustryNote,
 )
 from seed import seed_all
 import services
@@ -27,7 +28,6 @@ db.init_app(app)
 migrate.init_app(app, db)
 
 
-# ---------- Авторизация ----------
 class AdminUser(UserMixin):
     def __init__(self, id):
         self.id = id
@@ -48,7 +48,6 @@ def load_user(user_id):
     return None
 
 
-# ---------- Логин / логаут ----------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -67,8 +66,6 @@ def logout():
     logout_user()
     return redirect(url_for("index"))
 
-
-# ---------- Публичные маршруты ----------
 
 @app.route("/")
 def index():
@@ -106,7 +103,6 @@ def company_passport(monopoly_id):
     )
 
 
-# ---------- API ----------
 def api_response(data, meta=None, status=200):
     payload = {"data": data}
     if meta is not None:
@@ -150,81 +146,6 @@ def api_monopoly(monopoly_id):
     return api_response(data)
 
 
-@app.route("/api/monopolies")
-def api_monopolies():
-    type_filter = request.args.get("type")
-    industry_filter = request.args.get("industry")
-    country_filter = request.args.get("country")
-    search = request.args.get("q", "").strip()
-    limit = request.args.get("limit", type=int)
-    offset = request.args.get("offset", 0, type=int)
-
-    query = Monopoly.query
-    if type_filter in ("natural", "artificial"):
-        query = query.filter(Monopoly.monopoly_type == type_filter)
-    if industry_filter and industry_filter.isdigit():
-        query = query.filter(Monopoly.industry_id == int(industry_filter))
-    if country_filter and country_filter.isdigit():
-        query = query.filter(Monopoly.country_id == int(country_filter))
-    if search:
-        query = query.filter(
-            db.or_(
-                Monopoly.name.ilike(f"%{search}%"),
-                Monopoly.inn.ilike(f"%{search}%"),
-            )
-        )
-
-    total = query.count()
-    if limit:
-        query = query.limit(limit).offset(offset)
-
-    data = [
-        {
-            "id": m.id,
-            "name": m.name,
-            "short_name": m.short_name,
-            "inn": m.inn,
-            "monopoly_type": m.monopoly_type,
-            "badge_type": m.badge_type,
-            "industry": {"id": m.industry.id, "name": m.industry.name},
-            "country": {"id": m.country.id, "name": m.country.name, "code": m.country.code},
-            "website": m.website,
-        }
-        for m in query.all()
-    ]
-
-    return api_response(data, meta={"total": total, "limit": limit, "offset": offset})
-
-
-@app.route("/api/court-cases")
-def api_court_cases():
-    monopoly_filter = request.args.get("monopoly_id")
-    status_filter = request.args.get("status")
-
-    query = CourtCase.query
-    if monopoly_filter and monopoly_filter.isdigit():
-        query = query.filter(CourtCase.monopoly_id == int(monopoly_filter))
-    if status_filter in ("won", "lost", "pending"):
-        query = query.filter(CourtCase.status == status_filter)
-
-    data = [
-        {
-            "id": c.id,
-            "monopoly_id": c.monopoly_id,
-            "monopoly_name": c.monopoly.name if c.monopoly else None,
-            "case_number": c.case_number,
-            "court_name": c.court_name,
-            "decision_date": c.decision_date.isoformat() if c.decision_date else None,
-            "decision_link": c.decision_link,
-            "summary": c.summary,
-            "status": c.status,
-        }
-        for c in query.order_by(CourtCase.id).all()
-    ]
-    return api_response(data, meta={"total": len(data)})
-
-
-# ---------- Flask-Admin ----------
 class SecureAdminIndexView(AdminIndexView):
     @expose("/")
     @login_required
@@ -246,15 +167,15 @@ class CountryAdmin(SecureModelView):
     column_labels = {
         "name": "Название страны",
         "code": "Код (ISO)",
-        "market_scope": "Контур (ru / world)",
+        "market_scope": "Контур",
+    }
+    form_choices = {
+        "market_scope": [("ru", "Национальный"), ("world", "Глобальный")],
     }
     form_args = {
         "name": {"validators": [DataRequired()]},
         "code": {"validators": [DataRequired()]},
         "market_scope": {"validators": [DataRequired()]},
-    }
-    form_choices = {
-        "market_scope": [("ru", "Национальный (RU)"), ("world", "Мировой (World)")]
     }
 
 
@@ -265,43 +186,37 @@ class IndustryAdmin(SecureModelView):
     form_args = {"name": {"validators": [DataRequired()]}}
 
 
+class MonopolyTypeAdmin(SecureModelView):
+    column_list = ("id", "name")
+    form_columns = ("name",)
+    column_labels = {"name": "Название типа"}
+    form_args = {"name": {"validators": [DataRequired()]}}
+
+
 class MonopolyAdmin(SecureModelView):
     column_list = (
         "id", "name", "short_name", "inn", "country", "industry",
-        "monopoly_type", "badge_type", "employees", "founded_year"
+        "monopoly_type", "employees", "founded_year", "logo_url"
     )
     form_columns = (
-        "name", "short_name", "inn", "color", "country", "industry",
-        "monopoly_type", "badge_type", "activity", "description",
-        "website", "employees", "founded_year", "hq"
+        "name", "short_name", "inn",
+        "country", "industry", "monopoly_type",
+        "description", "website",
+        "employees", "founded_year",
+        "logo_url",
     )
     column_labels = {
         "name": "Название",
         "short_name": "Короткое имя",
         "inn": "ИНН",
-        "color": "Цвет (hex)",
         "country": "Страна",
         "industry": "Отрасль",
         "monopoly_type": "Тип монополии",
-        "badge_type": "Бейдж",
-        "activity": "Деятельность",
         "description": "Описание",
         "website": "Сайт",
         "employees": "Сотрудников, тыс.",
         "founded_year": "Год основания",
-        "hq": "Штаб-квартира",
-    }
-    form_choices = {
-        "monopoly_type": [
-            ("natural", "Естественная"),
-            ("artificial", "Искусственная"),
-        ],
-        "badge_type": [
-            ("natural", "Естественная"),
-            ("resource", "Ресурсная"),
-            ("platform", "Платформенная"),
-            ("hightech", "Высокотехнологичная"),
-        ],
+        "logo_url": "Ссылка на логотип (URL)",
     }
     form_args = {
         "name": {"validators": [DataRequired()]},
@@ -309,6 +224,7 @@ class MonopolyAdmin(SecureModelView):
         "country": {"validators": [DataRequired()]},
         "industry": {"validators": [DataRequired()]},
         "monopoly_type": {"validators": [DataRequired()]},
+        "logo_url": {"validators": [Optional(), URL()]},
     }
 
 
@@ -322,8 +238,7 @@ class PeriodAdmin(SecureModelView):
     column_list = ("id", "monopoly", "year")
     form_columns = ("monopoly", "year", "values")
     column_labels = {
-        "monopoly": "Монополия",
-        "year": "Год",
+        "monopoly": "Монополия", "year": "Год",
         "values": "Финансовые показатели",
     }
     inline_models = [PeriodValueInline]
@@ -337,8 +252,7 @@ class MetricAdmin(SecureModelView):
     column_list = ("id", "name", "code", "unit")
     form_columns = ("code", "name", "unit")
     column_labels = {
-        "code": "Код (служебный)",
-        "name": "Название показателя",
+        "code": "Код (служебный)", "name": "Название показателя",
         "unit": "Единица измерения",
     }
 
@@ -353,12 +267,9 @@ class CourtCaseAdmin(SecureModelView):
         "decision_date", "decision_link", "summary", "status"
     )
     column_labels = {
-        "monopoly": "Монополия",
-        "case_number": "Номер дела",
-        "court_name": "Суд",
-        "decision_date": "Дата решения",
-        "decision_link": "Ссылка на решение",
-        "summary": "Краткое описание",
+        "monopoly": "Монополия", "case_number": "Номер дела",
+        "court_name": "Суд", "decision_date": "Дата решения",
+        "decision_link": "Ссылка на решение", "summary": "Краткое описание",
         "status": "Статус (won / lost / pending)",
     }
     form_args = {
@@ -368,23 +279,51 @@ class CourtCaseAdmin(SecureModelView):
     }
 
 
+class CountryIndustryNoteAdmin(SecureModelView):
+    column_list = (
+        "id", "country", "industry", "title",
+        "hhi_override", "top_share_override", "companies_override"
+    )
+    form_columns = (
+        "country", "industry", "title", "body",
+        "hhi_override", "top_share_override", "companies_override"
+    )
+    column_labels = {
+        "country": "Страна",
+        "industry": "Отрасль",
+        "title": "Заголовок",
+        "body": "Текст о монополизации",
+        "hhi_override": "HHI",
+        "top_share_override": "Доля лидера, %",
+        "companies_override": "Компаний (вручную)",
+    }
+    form_args = {
+        "country": {"validators": [DataRequired()]},
+        "industry": {"validators": [DataRequired()]},
+        "body": {"validators": [DataRequired()]},
+    }
+
+
 admin = Admin(
     app, name="Панель администратора",
     template_mode="bootstrap4", index_view=SecureAdminIndexView()
 )
 admin.add_view(CountryAdmin(Country, db.session, name="Страны"))
 admin.add_view(IndustryAdmin(Industry, db.session, name="Отрасли"))
+admin.add_view(MonopolyTypeAdmin(MonopolyType, db.session, name="Типы монополий"))
 admin.add_view(MonopolyAdmin(Monopoly, db.session, name="Монополии"))
 admin.add_view(PeriodAdmin(Period, db.session, name="Периоды отчётности"))
 admin.add_view(MetricAdmin(Metric, db.session, name="Справочник показателей"))
 admin.add_view(CourtCaseAdmin(CourtCase, db.session, name="Судебные дела"))
+admin.add_view(CountryIndustryNoteAdmin(
+    CountryIndustryNote, db.session, name="Заметки по странам и отраслям"
+))
 
 
-# ---------- CLI ----------
 @app.cli.command("seed-all")
 def seed_all_command():
     seed_all()
-    print("База заполнена.")
+    print("Справочники заполнены.")
 
 
 @app.cli.command("reset-db")

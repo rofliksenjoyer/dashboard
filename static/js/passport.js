@@ -52,7 +52,27 @@ function renderBreadcrumbs(m) {
 
 
 function renderHeader(m) {
-    document.getElementById('monopoly-name').textContent = m.name;
+    const nameEl = document.getElementById('monopoly-name');
+    nameEl.textContent = m.name;
+
+    const headerBlock = nameEl.parentElement;
+    let logoImg = document.getElementById('monopoly-logo');
+    if (!logoImg) {
+        logoImg = document.createElement('img');
+        logoImg.id = 'monopoly-logo';
+        logoImg.className = 'monopoly-logo';
+        headerBlock.insertBefore(logoImg, nameEl);
+    }
+    const logoUrl = m.logo_filename
+        ? `/static/uploads/logos/${m.logo_filename}`
+        : m.logo_url;
+    if (logoUrl) {
+        logoImg.src = logoUrl;
+        logoImg.alt = m.name;
+        logoImg.style.display = 'inline-block';
+    } else {
+        logoImg.style.display = 'none';
+    }
 
     if (m.website) {
         const link = document.getElementById('monopoly-website');
@@ -167,7 +187,6 @@ function renderCharts(m) {
     const autonomy = periods.map(p => p.ratios?.autonomy ?? null);
     const debtLoad = periods.map(p => p.ratios?.debt_load ?? null);
 
-    // 1. Выручка и прибыль
     safeChart('chart-revenue', chart => {
         chart.setOption({
             title: { text: 'Динамика выручки и прибыли', textStyle: { fontSize: 14 } },
@@ -183,7 +202,6 @@ function renderCharts(m) {
         });
     });
 
-    // 2. Рентабельность
     safeChart('chart-ratios', chart => {
         chart.setOption({
             title: { text: 'Показатели рентабельности', textStyle: { fontSize: 14 } },
@@ -199,7 +217,6 @@ function renderCharts(m) {
         });
     });
 
-    // 3. Автономия
     safeChart('chart-autonomy', chart => {
         chart.setOption({
             title: { text: 'Коэффициент автономии', textStyle: { fontSize: 14 } },
@@ -213,7 +230,6 @@ function renderCharts(m) {
         });
     });
 
-    // 4. Долговая нагрузка
     safeChart('chart-debt-load', chart => {
         chart.setOption({
             title: { text: 'Коэффициент долговой нагрузки', textStyle: { fontSize: 14 } },
@@ -227,7 +243,6 @@ function renderCharts(m) {
         });
     });
 
-    // 5. Темпы прироста
     const growth = m.growth_rates || [];
     const growthLabels = growth.map(g => String(g.year));
     const revenueGrowth = growth.map(g => g.revenue_growth);
@@ -248,7 +263,6 @@ function renderCharts(m) {
         });
     });
 
-    // 6. Radar (без Лернера)
     safeChart('chart-radar', chart => {
         const norm = (value, max) => {
             if (value == null) return 0;
@@ -308,7 +322,6 @@ function renderCharts(m) {
         });
     });
 
-    // 7. Доля рынка (doughnut) — из API отрасли
     const latest = periods[periods.length - 1];
     if (latest && m.industry?.id) {
         fetch(`/api/scopes/${m.country.market_scope}/industries/${m.industry.id}?year=${latest.year}`)
@@ -350,42 +363,36 @@ function renderMarketShares(shares, monopolyName, year) {
 
 function renderBasicMetrics(m) {
     const periods = m.periods || [];
+    const columns = m.table_columns || [];
     const container = document.getElementById('basic-metrics');
 
-    if (!periods.length) {
+    if (!periods.length || !columns.length) {
         container.innerHTML = '';
         return;
     }
 
+    let head = '<tr><th>Год</th>';
+    columns.forEach(c => { head += `<th>${escapeHtml(c.label)}</th>`; });
+    head += '</tr>';
+
     let rows = '';
     periods.forEach(p => {
-        const values = p.values || {};
-        rows += `
-            <tr>
-                <td>${p.year}</td>
-                <td>${fmt(values.revenue?.value)}</td>
-                <td>${fmt(values.equity?.value)}</td>
-                <td>${fmt(values.assets?.value)}</td>
-                <td>${fmt(values.net_profit?.value)}</td>
-                <td>${fmt(values.credits?.value)}</td>
-            </tr>`;
+        const t = p.table || {};
+        rows += `<tr><td>${p.year}</td>`;
+        columns.forEach(c => {
+            rows += `<td>${fmt(t[c.code])}</td>`;
+        });
+        rows += '</tr>';
     });
 
     container.innerHTML = `
         <h2>Базовые показатели по годам (млн)</h2>
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Год</th>
-                    <th>Выручка от продаж</th>
-                    <th>Собственный капитал</th>
-                    <th>Активы</th>
-                    <th>Чистая прибыль</th>
-                    <th>Кредиты и займы</th>
-                </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-        </table>`;
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead>${head}</thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
 }
 
 
@@ -425,4 +432,10 @@ function renderCourtCases(cases) {
 function fmt(v) {
     if (v == null) return '—';
     return v.toLocaleString('ru-RU');
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
 }

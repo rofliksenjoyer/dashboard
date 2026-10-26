@@ -1,27 +1,21 @@
 {% extends "base.html" %}
 
 {% block title %}
-{% if scope == 'all' %}Весь мир{% elif scope == 'world' %}Глобальные рынки{% else %}Национальные рынки{% endif %}
+{% if scope == 'world' %}Глобальные рынки{% else %}Национальные рынки{% endif %}
 {% endblock %}
 
 {% block breadcrumbs %}
 <div class="breadcrumbs">
     <a href="{{ url_for('index') }}">Главное меню</a>
     <span class="sep">/</span>
-    <span>
-        {% if scope == 'all' %}Весь мир
-        {% elif scope == 'world' %}Глобальные рынки
-        {% else %}Национальные рынки{% endif %}
-    </span>
+    <span>{% if scope == 'world' %}Глобальные рынки{% else %}Национальные рынки{% endif %}</span>
 </div>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
     <h1>
-        {% if scope == 'all' %}Весь мир
-        {% elif scope == 'world' %}Глобальные рынки
-        {% else %}Национальные рынки{% endif %}
+        {% if scope == 'world' %}Глобальные рынки{% else %}Национальные рынки{% endif %}
         — Рейтинг отраслей
     </h1>
     <div class="year-picker">
