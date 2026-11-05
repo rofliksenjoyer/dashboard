@@ -10,6 +10,8 @@ from flask_login import (
     login_required, current_user
 )
 from wtforms.validators import DataRequired, Optional, URL
+from wtforms import FloatField, IntegerField
+from wtforms.validators import Optional
 
 from config import Config
 from extensions import db, migrate
@@ -293,10 +295,18 @@ class CountryIndustryNoteAdmin(SecureModelView):
         "industry": "Отрасль",
         "title": "Заголовок",
         "body": "Текст о монополизации",
-        "hhi_override": "HHI",
+        "hhi_override": "HHI вручную",
         "top_share_override": "Доля лидера, %",
-        "companies_override": "Компаний (вручную)",
+        "companies_override": "Компаний",
     }
+    
+    # Принудительно создаем поля для формы
+    form_extra_fields = {
+        "hhi_override": FloatField("HHI вручную", validators=[Optional()]),
+        "top_share_override": FloatField("Доля лидера, %", validators=[Optional()]),
+        "companies_override": IntegerField("Компаний (вручную)", validators=[Optional()]),
+    }
+    
     form_args = {
         "country": {"validators": [DataRequired()]},
         "industry": {"validators": [DataRequired()]},

@@ -156,10 +156,27 @@ function openChartModal(elId) {
     modalChart = echarts.init(body);
     const options = chartRegistry[elId];
     if (options) {
-        const enlarged = JSON.parse(JSON.stringify(options));
-        if (enlarged.title?.[0]) enlarged.title[0].textStyle = { fontSize: 18 };
-        if (enlarged.legend?.[0]) enlarged.legend[0].textStyle = { fontSize: 14 };
-        modalChart.setOption(enlarged);
+        const enlarged = {
+    ...options,
+
+    title: options.title?.map(t => ({
+        ...t,
+        textStyle: {
+            ...t.textStyle,
+            fontSize: 18
+        }
+    })),
+
+    legend: options.legend?.map(l => ({
+        ...l,
+        textStyle: {
+            ...l.textStyle,
+            fontSize: 14
+        }
+    }))
+};
+
+modalChart.setOption(enlarged);
     }
     setTimeout(() => modalChart.resize(), 50);
 }
@@ -285,7 +302,7 @@ function renderCharts(m) {
         });
 
         chart.setOption({
-            title: { text: 'Комплексная оценка (нормализовано, %)', textStyle: { fontSize: 14 } },
+            title: { text: 'Комплексная оценка', textStyle: { fontSize: 14 } },
             tooltip: {
                 trigger: 'item',
                 formatter: params => {
