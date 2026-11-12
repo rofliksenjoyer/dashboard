@@ -3,7 +3,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const flagsEl = document.getElementById('sector-flags');
     const gridEl = document.getElementById('company-grid');
     const yearSelect = document.getElementById('year-select');
+    const typeSelect = document.getElementById('type-select');
+    
     let currentYear = null;
+    let currentType = null;
     let countryNotes = [];
     let currentIndustry = null;
 
@@ -45,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = country.title || country.country_name;
         const body = country.body
             ? escapeHtml(country.body).replace(/\n/g, '<br>')
-            : '<span class="muted">Заметка ещё не заполнена. Добавьте её в админке: «Заметки по странам и отраслям».</span>';
+            : '<span class="muted">Информация ещё не добавлена.</span>';
 
         modalBody.innerHTML = `
             <div class="note-head">
@@ -73,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             ${country.top_companies && country.top_companies.length ? `
                 <div class="note-top">
-                    <div class="stat-label" style="margin-bottom:.5rem;">Топ-компании по выручке</div>
+                    <div class="stat-label" style="margin-bottom:.5rem;">Лидеры отрасли</div>
                     <ol class="top-list">
                         ${country.top_companies.map(tc => `
                             <li>
@@ -144,8 +147,14 @@ document.addEventListener('DOMContentLoaded', () => {
         infoEl.innerHTML = '';
         flagsEl.innerHTML = '<p class="muted">Загрузка…</p>';
         gridEl.innerHTML = '<p class="muted">Загрузка…</p>';
+        
         const params = new URLSearchParams();
         if (currentYear) params.set('year', currentYear);
+        if (currentType) params.set('type', currentType);
+        // Если мы в национальном контуре и передали country_id
+        if (typeof COUNTRY_ID !== 'undefined' && COUNTRY_ID) {
+            params.set('country', COUNTRY_ID);
+        }
 
         fetch(`/api/scopes/${SCOPE}/industries/${INDUSTRY_ID}?${params.toString()}`)
             .then(r => r.json())
@@ -154,6 +163,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!d) { gridEl.innerHTML = '<p class="muted">Нет данных.</p>'; return; }
                 countryNotes = d.country_notes || [];
                 currentIndustry = d.industry?.name || '';
+                
+                // Заполняем селект типов монополий (только 1 раз)
+                if (typeSelect && typeSelect.options.length === 1 && d.monopoly_types) {
+                    d.monopoly_types.forEach(t => {
+                        typeSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+                    });
+                }
+
                 renderInfo(d);
                 renderFlags(d);
                 renderHhiChart(d);
@@ -364,6 +381,13 @@ document.addEventListener('DOMContentLoaded', () => {
         currentYear = yearSelect.value ? Number(yearSelect.value) : null;
         load();
     });
+
+    if (typeSelect) {
+        typeSelect.addEventListener('change', () => {
+            currentType = typeSelect.value ? Number(typeSelect.value) : null;
+            load();
+        });
+    }
 
     const cm = document.getElementById('chart-modal');
     if (cm) {

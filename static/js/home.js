@@ -1,14 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
     Promise.all([
-        fetch('/api/scopes/world').then(r => r.json()),
-        fetch('/api/scopes/ru').then(r => r.json()),
+        fetch('/api/scopes/world/totals').then(r => r.json()),
+        fetch('/api/scopes/ru/totals').then(r => r.json()),
     ]).then(([world, ru]) => {
         renderStats('stats-world', world.data);
         renderStats('stats-ru', ru.data);
 
         const totalsEl = document.getElementById('dash-totals');
-        const w = (world.data && world.data.totals) || {};
-        const r = (ru.data && ru.data.totals) || {};
+        const w = world.data || {};
+        const r = ru.data || {};
 
         const sectorsCount = (w.sectors || 0) + (r.sectors || 0);
         const companiesCount = (w.companies || 0) + (r.companies || 0);
@@ -38,11 +38,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderStats(elId, d) {
         const el = document.getElementById(elId);
         if (!el || !d) { if (el) el.textContent = '—'; return; }
-        const t = d.totals || {};
         el.innerHTML = `
-            <span class="pill">${t.sectors || 0} отрасл.</span>
-            <span class="pill">${t.companies || 0} компан.</span>
-            <span class="pill">Макс. ${Math.round(t.max_share || 0)}%</span>
+            <span class="pill">${d.sectors || 0} отрасл.</span>
+            <span class="pill">${d.companies || 0} компан.</span>
+            <span class="pill">Макс. ${Math.round(d.max_share || 0)}%</span>
         `;
     }
 });

@@ -29,21 +29,42 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = '<p class="muted">Загрузка…</p>';
         const params = new URLSearchParams();
         if (currentYear) params.set('year', currentYear);
+        
+        // Если мы внутри страны, передаем ID
+        if (typeof COUNTRY_ID !== 'undefined' && COUNTRY_ID) {
+            params.set('country', COUNTRY_ID);
+        }
 
         fetch(`/api/scopes/${SCOPE}?${params.toString()}`)
             .then(r => r.json())
             .then(res => {
                 const d = res.data;
-                const sectors = (d.sectors || []).slice();
-                if (!sectors.length) {
+
+                if (d.type === "countries") {
+                    container.innerHTML = `<div class="company-grid">` + d.data.map(c => `
+                        <a href="/scope/ru?country=${c.id}" class="company-card fade-in">
+                            <div class="co-logo">${c.flag_emoji || c.code}</div>
+                            <div class="co-name">${c.name}</div>
+                            <div class="co-open">Выбрать &rarr;</div>
+                        </a>
+                    `).join('') + `</div>`;
+                    return;
+                }
+
+                if (!d.sectors || !d.sectors.length) {
                     container.innerHTML = '<p class="muted">Нет данных.</p>';
                     return;
                 }
+                
                 container.innerHTML = '';
-                sectors.forEach(s => {
+                d.sectors.forEach(s => {
                     const row = document.createElement('a');
                     row.className = 'bar-row';
-                    row.href = `/scope/${SCOPE}/industry/${s.id}`;
+                    
+                    // Передаем country в ссылку на отрасль
+                    const industryUrl = `/scope/${SCOPE}/industry/${s.id}${COUNTRY_ID ? '?country=' + COUNTRY_ID : ''}`;
+                    row.href = industryUrl;
+                    
                     row.innerHTML = `
                         <div class="bar-row-head">
                             <span class="bar-name">${escapeHtml(s.name)}</span>
@@ -75,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, c => ({
-            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
         }[c]));
     }
 });

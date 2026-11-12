@@ -339,24 +339,42 @@ function renderCharts(m) {
         });
     });
 
+    // 7. Доля рынка (doughnut) — из API отрасли
     const latest = periods[periods.length - 1];
     if (latest && m.industry?.id) {
-        fetch(`/api/scopes/${m.country.market_scope}/industries/${m.industry.id}?year=${latest.year}`)
+        const scope = m.country.market_scope;
+        
+        // Формируем URL
+        let url = `/api/scopes/${scope}/industries/${m.industry.id}?year=${latest.year}`;
+        
+        // Если это НАЦИОНАЛЬНЫЙ рынок — фильтруем по стране.
+        // Если ГЛОБАЛЬНЫЙ — не передаем country, чтобы видеть весь мир.
+        if (scope === 'ru') {
+            url += `&country=${m.country.id}`;
+        }
+        
+        fetch(url)
             .then(r => r.json())
             .then(res => renderMarketShares(
                 res.data?.companies || [],
                 m.short_name || m.name,
-                latest.year
+                latest.year,
+                scope 
             ));
     }
 }
 
 
-function renderMarketShares(shares, monopolyName, year) {
+function renderMarketShares(shares, monopolyName, year, scope) {
     if (!shares.length) return;
+    
+    const titleText = scope === 'ru' 
+        ? `Доля рынка в стране (${year})` 
+        : `Доля мирового рынка (${year})`;
+
     safeChart('chart-market-share', chart => {
         chart.setOption({
-            title: { text: `Доля рынка по отрасли (${year})`, textStyle: { fontSize: 14 } },
+            title: { text: titleText, textStyle: { fontSize: 14 } },
             tooltip: { trigger: 'item', formatter: '{b}: {c}% ({d}%)' },
             legend: { orient: 'vertical', right: 10, top: 40, bottom: 20 },
             series: [{
