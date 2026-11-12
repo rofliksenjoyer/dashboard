@@ -1,8 +1,8 @@
 """Initial migration
 
-Revision ID: cd8e5195a50f
+Revision ID: 289bebfdc33a
 Revises: 
-Create Date: 2026-11-03 16:03:20.191417
+Create Date: 2026-11-12 00:12:18.288432
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'cd8e5195a50f'
+revision = '289bebfdc33a'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -22,15 +22,11 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('code', sa.String(length=3), nullable=False),
-    sa.Column('market_scope', sa.String(length=10), nullable=False),
     sa.Column('flag_emoji', sa.String(length=8), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('code'),
     sa.UniqueConstraint('name')
     )
-    with op.batch_alter_table('countries', schema=None) as batch_op:
-        batch_op.create_index('ix_country_market_scope', ['market_scope'], unique=False)
-
     op.create_table('industries',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
@@ -76,6 +72,7 @@ def upgrade():
     sa.Column('color', sa.String(length=20), nullable=True),
     sa.Column('logo_url', sa.String(length=500), nullable=True),
     sa.Column('logo_filename', sa.String(length=255), nullable=True),
+    sa.Column('market_scope', sa.String(length=10), nullable=False),
     sa.Column('country_id', sa.Integer(), nullable=False),
     sa.Column('industry_id', sa.Integer(), nullable=False),
     sa.Column('monopoly_type_id', sa.Integer(), nullable=False),
@@ -149,8 +146,5 @@ def downgrade():
     op.drop_table('monopoly_types')
     op.drop_table('metrics')
     op.drop_table('industries')
-    with op.batch_alter_table('countries', schema=None) as batch_op:
-        batch_op.drop_index('ix_country_market_scope')
-
     op.drop_table('countries')
     # ### end Alembic commands ###

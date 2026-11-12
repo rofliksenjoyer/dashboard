@@ -39,6 +39,7 @@
 {% block scripts %}
 <script>
     const SCOPE = "{{ scope }}";
+    const COUNTRY_ID = {{ country_id or 'null' }};
 </script>
 <script src="{{ url_for('static', filename='js/scope.js') }}"></script>
 {% endblock %}

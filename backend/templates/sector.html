@@ -33,6 +33,14 @@
 <div class="chart chart-wide" id="chart-hhi-dynamics"></div>
 
 <h2>Компании отрасли</h2>
+<div class="sector-filters" style="margin-bottom: 1.5rem; display: flex; gap: 1rem;">
+    <div class="year-picker">
+        <label>Тип монополии:</label>
+        <select id="type-select">
+            <option value="">Все типы</option>
+        </select>
+    </div>
+</div>
 <div class="company-grid" id="company-grid">
     <p class="muted">Загрузка…</p>
 </div>
@@ -56,6 +64,7 @@
 <script>
     const SCOPE = "{{ scope }}";
     const INDUSTRY_ID = {{ industry_id }};
+    const COUNTRY_ID = {{ country_id or 'null' }};
 </script>
 <script src="{{ url_for('static', filename='js/sector.js') }}"></script>
 {% endblock %}

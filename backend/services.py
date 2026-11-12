@@ -1,9 +1,4 @@
-"""
-Уровни анализа:
-1. Контур (market_scope: world / ru) -> рейтинг отраслей
-2. Отрасль в контуре -> HHI, доли рынка, компании, заметки по странам
-3. Компания (монополия) -> паспорт + метрики
-"""
+from collections import defaultdict
 from extensions import db
 from models import (
     Country, Industry, MonopolyType, Monopoly, Period, PeriodValue, Metric,
@@ -32,6 +27,8 @@ TABLE_METRIC_CODES = (
 )
 
 
+# ---------- Базовые утилиты ----------
+
 def get_metric_value(period, code):
     m = Metric.query.filter_by(code=code).first()
     if not m:
@@ -53,19 +50,53 @@ def _period_for(monopoly_id, year):
     return Period.query.filter_by(monopoly_id=monopoly_id, year=year).first()
 
 
-def _countries_for_scope(scope):
-    return (
-        Country.query
-        .filter_by(market_scope=scope)
-        .order_by(Country.name)
-        .all()
+def get_global_totals(scope):
+    """Возвращает только общую статистику для главной страницы."""
+    companies = Monopoly.query.filter_by(market_scope=scope).all()
+    industries_count = len({m.industry_id for m in companies})
+    
+    years = available_years()
+    year = years[-1] if years else None
+    
+    total_revenue = 0.0
+    max_share = 0.0
+    
+    by_industry = defaultdict(list)
+    for m in companies:
+        by_industry[m.industry_id].append(m)
+        
+    for ind_id, m_list in by_industry.items():
+        revs = []
+        for m in m_list:
+            if year:
+                period = _period_for(m.id, year)
+                if period:
+                    rev = get_metric_value(period, "revenue")
+                    if rev:
+                        revs.append(rev)
+        if revs:
+            total = sum(revs)
+            total_revenue += total
+            max_share = max(max_share, max(revs) / total * 100)
+            
+    return {
+        "sectors": industries_count,
+        "companies": len(companies),
+        "max_share": round(max_share, 2),
+        "total_revenue": round(total_revenue, 2),
+        "countries": len({m.country_id for m in companies})
+    }
+
+
+# ---------- Расчёт рыночных долей и HHI ----------
+
+def calculate_market_shares(country_id, industry_id, year, type_id=None, scope="ru"):
+    query = Monopoly.query.filter_by(
+        country_id=country_id, industry_id=industry_id, market_scope=scope
     )
-
-
-def calculate_market_shares(country_id, industry_id, year):
-    monopolies = Monopoly.query.filter_by(
-        country_id=country_id, industry_id=industry_id
-    ).all()
+    if type_id:
+        query = query.filter_by(monopoly_type_id=type_id)
+    monopolies = query.all()
 
     rows = []
     for m in monopolies:
@@ -94,50 +125,84 @@ def calculate_market_shares(country_id, industry_id, year):
     return rows
 
 
-def calculate_hhi(country_id, industry_id, year):
-    shares = calculate_market_shares(country_id, industry_id, year)
+def calculate_hhi(country_id, industry_id, year, type_id=None, scope="ru"):
+    shares = calculate_market_shares(country_id, industry_id, year, type_id, scope)
     if not shares:
         return None
     return round(sum(s["share"] ** 2 for s in shares), 2)
 
 
-def _hhi_for_scope(scope, industry_id, year):
-    countries = _countries_for_scope(scope)
-    shares = []
-    for c in countries:
-        shares.extend(calculate_market_shares(c.id, industry_id, year))
-    if not shares:
+def _hhi_for_scope(scope, industry_id, year, country_id=None, type_id=None):
+    """Считает HHI. Если страна не указана, возвращает среднее значение по странам."""
+    query = Monopoly.query.filter_by(market_scope=scope, industry_id=industry_id)
+    if country_id:
+        query = query.filter_by(country_id=country_id)
+    if type_id:
+        query = query.filter_by(monopoly_type_id=type_id)
+
+    monopolies = query.all()
+    by_country = defaultdict(list)
+    
+    for m in monopolies:
+        period = _period_for(m.id, year)
+        if period:
+            rev = get_metric_value(period, "revenue")
+            if rev:
+                by_country[m.country_id].append(rev)
+
+    if not by_country:
         return None
-    total = sum(x["revenue"] for x in shares)
-    if not total:
+        
+    hhi_values = []
+    for c_id, revs in by_country.items():
+        total = sum(revs)
+        if total:
+            shares = [r / total for r in revs]
+            # HHI считается по долям от 0 до 1, поэтому умножаем на 10000
+            hhi_values.append(sum(s ** 2 for s in shares) * 10000)
+            
+    if not hhi_values:
         return None
-    for x in shares:
-        x["share"] = round(x["revenue"] / total * 100, 2)
-    return round(sum(x["share"] ** 2 for x in shares), 2)
+        
+    return round(sum(hhi_values) / len(hhi_values), 2)
 
 
-def get_scope_overview(scope, year=None):
+# ---------- Уровень 1: Контур (Страны или Отрасли) ----------
+
+def get_scope_overview(scope, country_id=None, year=None):
     if scope not in VALID_SCOPES:
         return None
+
+    # Если это национальный контур и не выбрана страна — отдаем список стран
+    if scope == "ru" and not country_id:
+        countries = (
+            db.session.query(Country)
+            .join(Monopoly)
+            .filter(Monopoly.market_scope == "ru")
+            .distinct()
+            .order_by(Country.name)
+            .all()
+        )
+        return {
+            "type": "countries",
+            "data": [
+                {"id": c.id, "name": c.name, "code": c.code, "flag_emoji": c.flag_emoji}
+                for c in countries
+            ]
+        }
 
     if year is None:
         years = available_years()
         year = years[-1] if years else None
 
-    countries = _countries_for_scope(scope)
-    country_ids = [c.id for c in countries]
-    if not country_ids:
-        return {
-            "scope": scope, "year": year, "sectors": [],
-            "totals": {"sectors": 0, "companies": 0, "max_share": 0,
-                       "total_revenue": 0, "countries": 0},
-        }
+    query = Monopoly.query.filter_by(market_scope=scope)
+    if country_id:
+        query = query.filter_by(country_id=country_id)
 
+    industry_ids = {m.industry_id for m in query.all()}
     industries = (
         Industry.query
-        .join(Monopoly, Monopoly.industry_id == Industry.id)
-        .filter(Monopoly.country_id.in_(country_ids))
-        .distinct()
+        .filter(Industry.id.in_(industry_ids))
         .order_by(Industry.name)
         .all()
     )
@@ -148,54 +213,42 @@ def get_scope_overview(scope, year=None):
     max_share = 0.0
 
     for ind in industries:
-        shares = []
-        for cid in country_ids:
-            shares.extend(calculate_market_shares(cid, ind.id, year))
+        # Собираем доли компаний
+        if country_id:
+            shares = calculate_market_shares(country_id, ind.id, year, scope=scope)
+        else:
+            # Группируем по странам для правильного расчёта долей
+            q = Monopoly.query.filter_by(market_scope=scope, industry_id=ind.id).all()
+            by_country = defaultdict(list)
+            for m in q:
+                period = _period_for(m.id, year)
+                if period:
+                    rev = get_metric_value(period, "revenue")
+                    if rev:
+                        by_country[m.country_id].append({"revenue": rev})
+            
+            shares = []
+            for c_id, c_revs in by_country.items():
+                c_total = sum(x["revenue"] for x in c_revs)
+                if c_total:
+                    for x in c_revs:
+                        x["share"] = round(x["revenue"] / c_total * 100, 2)
+                        shares.append(x)
 
         top = 0.0
         hhi_val = None
         rev_sum = 0.0
 
         if shares:
-            total = sum(x["revenue"] for x in shares)
-            if total:
-                for x in shares:
-                    x["share"] = round(x["revenue"] / total * 100, 2)
-                shares.sort(key=lambda r: r["revenue"], reverse=True)
-                hhi_val = round(sum(x["share"] ** 2 for x in shares), 2)
-                rev_sum = total
-                top = shares[0]["share"]
+            # Общая выручка отрасли в контуре
+            rev_sum = sum(x["revenue"] for x in shares)
+            # Топ-доля (максимальная среди всех стран)
+            if shares:
+                top = max(x["share"] for x in shares)
                 max_share = max(max_share, top)
-
-        present_countries = []
-        country_ids_with_data = set()
-
-        for c in countries:
-            own = calculate_market_shares(c.id, ind.id, year)
-            if own:
-                country_ids_with_data.add(c.id)
-
-        all_notes = CountryIndustryNote.query.filter_by(industry_id=ind.id).all()
-        for note in all_notes:
-            country_ids_with_data.add(note.country_id)
-
-        all_countries = Country.query.all()
-        c_map = {c.id: c for c in all_countries}
-
-        for cid in country_ids_with_data:
-            c = c_map.get(cid)
-            if not c:
-                continue
-            note = CountryIndustryNote.query.filter_by(
-                country_id=c.id, industry_id=ind.id
-            ).first()
-            present_countries.append({
-                "country_id": c.id,
-                "country_name": c.name,
-                "country_code": c.code,
-                "country_flag": c.flag_emoji,
-                "has_note": bool(note and note.body and note.body.strip()),
-            })
+            
+            # HHI (средний по странам)
+            hhi_val = _hhi_for_scope(scope, ind.id, year, country_id)
 
         sectors.append({
             "id": ind.id,
@@ -204,7 +257,6 @@ def get_scope_overview(scope, year=None):
             "top_share": top,
             "hhi": hhi_val,
             "total_revenue": round(rev_sum, 2),
-            "countries": present_countries,
         })
         total_companies += len(shares)
         total_revenue += rev_sum
@@ -212,6 +264,7 @@ def get_scope_overview(scope, year=None):
     sectors.sort(key=lambda x: x["top_share"], reverse=True)
 
     return {
+        "type": "sectors",
         "scope": scope,
         "year": year,
         "sectors": sectors,
@@ -220,12 +273,13 @@ def get_scope_overview(scope, year=None):
             "companies": total_companies,
             "max_share": round(max_share, 2),
             "total_revenue": round(total_revenue, 2),
-            "countries": len(countries),
         },
     }
 
 
-def get_sector_detail(scope, industry_id, year=None):
+# ---------- Уровень 2: Отрасль (с фильтрами) ----------
+
+def get_sector_detail(scope, industry_id, country_id=None, type_id=None, year=None):
     if scope not in VALID_SCOPES:
         return None
 
@@ -237,57 +291,70 @@ def get_sector_detail(scope, industry_id, year=None):
     if not industry:
         return None
 
-    countries = _countries_for_scope(scope)
+    query = Monopoly.query.filter_by(market_scope=scope, industry_id=industry_id)
+    if country_id:
+        query = query.filter_by(country_id=country_id)
+    if type_id:
+        query = query.filter_by(monopoly_type_id=type_id)
+
+    companies = query.all()
+    
+    # Группируем компании по странам для расчёта долей внутри страны
+    by_country = defaultdict(list)
+    for m in companies:
+        period = _period_for(m.id, year)
+        if period:
+            rev = get_metric_value(period, "revenue")
+            if rev:
+                by_country[m.country_id].append({
+                    "monopoly_id": m.id,
+                    "name": m.name,
+                    "short_name": m.short_name or m.name,
+                    "color": m.color,
+                    "revenue": rev,
+                    "country_id": m.country_id,
+                    "country_name": m.country.name,
+                    "country_code": m.country.code,
+                    "country_flag": m.country.flag_emoji,
+                    "logo_url": m.logo_url,
+                    "logo_filename": m.logo_filename,
+                    "monopoly_type": m.monopoly_type.name if m.monopoly_type else None,
+                })
+
     shares = []
-    for c in countries:
-        shares.extend(calculate_market_shares(c.id, industry_id, year))
+    total_revenue_all = 0.0
+    
+    for c_id, c_companies in by_country.items():
+        country_total = sum(x["revenue"] for x in c_companies)
+        if country_total:
+            for x in c_companies:
+                x["share"] = round(x["revenue"] / country_total * 100, 2)
+                shares.append(x)
+            total_revenue_all += country_total
 
-    for row in shares:
-        m = Monopoly.query.get(row["monopoly_id"])
-        if m:
-            row["country_id"] = m.country_id
-            row["country_name"] = m.country.name
-            row["country_code"] = m.country.code
-            row["country_flag"] = m.country.flag_emoji
-            row["logo_url"] = m.logo_url
-            row["logo_filename"] = m.logo_filename
-            row["monopoly_type"] = m.monopoly_type.name if m.monopoly_type else None
-
-    if not shares:
-        return {
-            "industry": {"id": industry.id, "name": industry.name},
-            "scope": scope,
-            "year": year,
-            "companies": [],
-            "hhi": None,
-            "hhi_dynamics": [{"year": y, "hhi": None} for y in years],
-            "total_revenue": 0,
-            "top_share": 0,
-            "country_notes": [],
-        }
-
-    total = sum(x["revenue"] for x in shares)
-    if total:
-        for x in shares:
-            x["share"] = round(x["revenue"] / total * 100, 2)
+    # Сортируем итоговый список по выручке (по убыванию)
     shares.sort(key=lambda r: r["revenue"], reverse=True)
-    hhi_val = round(sum(x["share"] ** 2 for x in shares), 2)
+    
+    # HHI (средний по странам)
+    hhi_val = _hhi_for_scope(scope, industry_id, year, country_id, type_id)
 
     hhi_dynamics = []
     for y in years:
         hhi_dynamics.append({
             "year": y,
-            "hhi": _hhi_for_scope(scope, industry_id, y),
+            "hhi": _hhi_for_scope(scope, industry_id, y, country_id, type_id),
         })
 
     notes = []
     country_ids_with_data = set()
-    for c in countries:
-        own = calculate_market_shares(c.id, industry_id, year)
-        if own:
-            country_ids_with_data.add(c.id)
+    
+    q_all = Monopoly.query.filter_by(market_scope=scope, industry_id=industry_id).all()
+    for m in q_all:
+        country_ids_with_data.add(m.country_id)
 
-    all_notes = CountryIndustryNote.query.filter_by(industry_id=industry_id).all()
+    all_notes = CountryIndustryNote.query.filter_by(
+        industry_id=industry_id, market_scope=scope
+    ).all()
     for note in all_notes:
         country_ids_with_data.add(note.country_id)
 
@@ -299,14 +366,17 @@ def get_sector_detail(scope, industry_id, year=None):
         if not c:
             continue
         note = CountryIndustryNote.query.filter_by(
-            country_id=c.id, industry_id=industry_id
+            country_id=c.id, industry_id=industry_id, market_scope=scope
         ).first()
-        own = calculate_market_shares(c.id, industry_id, year)
+        
+        # Для заметок также считаем долю внутри страны
+        own = calculate_market_shares(c.id, industry_id, year, scope=scope)
 
         top_companies = [
             {"name": x["short_name"] or x["name"], "share": x["share"]}
             for x in own[:3]
         ]
+        
         notes.append({
             "country_id": c.id,
             "country_name": c.name,
@@ -315,7 +385,7 @@ def get_sector_detail(scope, industry_id, year=None):
             "title": (note.title if note else None) or c.name,
             "body": note.body if note else None,
             "hhi": (note.hhi_override if note and note.hhi_override is not None
-                    else calculate_hhi(c.id, industry_id, year)),
+                    else calculate_hhi(c.id, industry_id, year, scope=scope)),
             "top_share": (note.top_share_override if note and note.top_share_override is not None
                           else (own[0]["share"] if own else 0)),
             "companies_count": (note.companies_override if note and note.companies_override is not None
@@ -330,11 +400,14 @@ def get_sector_detail(scope, industry_id, year=None):
         "companies": shares,
         "hhi": hhi_val,
         "hhi_dynamics": hhi_dynamics,
-        "total_revenue": round(total, 2),
-        "top_share": shares[0]["share"],
+        "total_revenue": round(total_revenue_all, 2),
+        "top_share": max((x["share"] for x in shares), default=0),
         "country_notes": notes,
+        "monopoly_types": [{"id": t.id, "name": t.name} for t in MonopolyType.query.all()]
     }
 
+
+# ---------- Уровень 3: Паспорт ----------
 
 def calculate_ratios_for_period(period):
     revenue = get_metric_value(period, "revenue")
@@ -437,7 +510,7 @@ def get_company_passport(monopoly_id):
             "id": m.country.id,
             "name": m.country.name,
             "code": m.country.code,
-            "market_scope": m.country.market_scope,
+            "market_scope": m.market_scope,
             "flag_emoji": m.country.flag_emoji,
         },
         "periods": periods_data,

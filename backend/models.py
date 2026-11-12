@@ -6,45 +6,32 @@ class Country(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
     code = db.Column(db.String(3), nullable=False, unique=True)
-    market_scope = db.Column(db.String(10), nullable=False, default="ru")
     flag_emoji = db.Column(db.String(8), nullable=True)
 
-    monopolies = db.relationship(
-        "Monopoly", back_populates="country",
-        lazy=True, cascade="all, delete-orphan",
-    )
-
-    __table_args__ = (
-        db.Index("ix_country_market_scope", "market_scope"),
-    )
+    monopolies = db.relationship("Monopoly", back_populates="country", lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Country {self.code}>"
-
 
 class Industry(db.Model):
     __tablename__ = "industries"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
 
-    monopolies = db.relationship(
-        "Monopoly", back_populates="industry",
-        lazy=True, cascade="all, delete-orphan",
-    )
+    monopolies = db.relationship("Monopoly", back_populates="industry", lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Industry {self.name}>"
 
+    def __str__(self):
+        return self.name
 
 class MonopolyType(db.Model):
     __tablename__ = "monopoly_types"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
 
-    monopolies = db.relationship(
-        "Monopoly", back_populates="monopoly_type",
-        lazy=True,
-    )
+    monopolies = db.relationship("Monopoly", back_populates="monopoly_type", lazy=True)
 
     def __repr__(self):
         return f"<MonopolyType {self.name}>"
@@ -52,25 +39,22 @@ class MonopolyType(db.Model):
     def __str__(self):
         return self.name
 
-
 class Monopoly(db.Model):
     __tablename__ = "monopolies"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     short_name = db.Column(db.String(100), nullable=True)
-    inn = db.Column(db.String(12), nullable=False)
+    inn = db.Column(db.String(18), nullable=False)
     color = db.Column(db.String(20), nullable=True)
     logo_url = db.Column(db.String(500), nullable=True)
     logo_filename = db.Column(db.String(255), nullable=True)
-    country_id = db.Column(
-        db.Integer, db.ForeignKey("countries.id"), nullable=False
-    )
-    industry_id = db.Column(
-        db.Integer, db.ForeignKey("industries.id"), nullable=False
-    )
-    monopoly_type_id = db.Column(
-        db.Integer, db.ForeignKey("monopoly_types.id"), nullable=False
-    )
+    
+    market_scope = db.Column(db.String(10), nullable=False, default="ru") 
+    
+    country_id = db.Column(db.Integer, db.ForeignKey("countries.id"), nullable=False)
+    industry_id = db.Column(db.Integer, db.ForeignKey("industries.id"), nullable=False)
+    monopoly_type_id = db.Column(db.Integer, db.ForeignKey("monopoly_types.id"), nullable=False)
+    
     description = db.Column(db.Text, nullable=True)
     activity = db.Column(db.Text, nullable=True)
     website = db.Column(db.String(200), nullable=True)
@@ -81,14 +65,8 @@ class Monopoly(db.Model):
     country = db.relationship("Country", back_populates="monopolies")
     industry = db.relationship("Industry", back_populates="monopolies")
     monopoly_type = db.relationship("MonopolyType", back_populates="monopolies")
-    periods = db.relationship(
-        "Period", back_populates="monopoly",
-        lazy=True, cascade="all, delete-orphan",
-    )
-    court_cases = db.relationship(
-        "CourtCase", back_populates="monopoly",
-        lazy=True, cascade="all, delete-orphan",
-    )
+    periods = db.relationship("Period", back_populates="monopoly", lazy=True, cascade="all, delete-orphan")
+    court_cases = db.relationship("CourtCase", back_populates="monopoly", lazy=True, cascade="all, delete-orphan")
 
     __table_args__ = (
         db.UniqueConstraint("country_id", "inn"),
@@ -170,14 +148,11 @@ class CourtCase(db.Model):
 class CountryIndustryNote(db.Model):
     __tablename__ = "country_industry_notes"
     id = db.Column(db.Integer, primary_key=True)
-    country_id = db.Column(
-        db.Integer, db.ForeignKey("countries.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    industry_id = db.Column(
-        db.Integer, db.ForeignKey("industries.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    country_id = db.Column(db.Integer, db.ForeignKey("countries.id", ondelete="CASCADE"), nullable=False)
+    industry_id = db.Column(db.Integer, db.ForeignKey("industries.id", ondelete="CASCADE"), nullable=False)
+    
+    market_scope = db.Column(db.String(10), nullable=False, default="ru")
+    
     title = db.Column(db.String(200), nullable=True)
     body = db.Column(db.Text, nullable=False, default="")
     hhi_override = db.Column(db.Float, nullable=True)
@@ -188,8 +163,8 @@ class CountryIndustryNote(db.Model):
     industry = db.relationship("Industry")
 
     __table_args__ = (
-        db.UniqueConstraint("country_id", "industry_id"),
-        db.Index("ix_note_country_industry", "country_id", "industry_id"),
+        db.UniqueConstraint("country_id", "industry_id", "market_scope"),
+        db.Index("ix_note_country_industry", "country_id", "industry_id", "market_scope"),
     )
 
     def __repr__(self):

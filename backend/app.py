@@ -11,7 +11,6 @@ from flask_login import (
 )
 from wtforms.validators import DataRequired, Optional, URL
 from wtforms import FloatField, IntegerField
-from wtforms.validators import Optional
 
 from config import Config
 from extensions import db, migrate
@@ -78,7 +77,7 @@ def index():
 def scope_view(scope):
     if scope not in VALID_SCOPES:
         abort(404)
-    return render_template("scope.html", scope=scope)
+    return render_template("scope.html", scope=scope, country_id=request.args.get("country", type=int))
 
 
 @app.route("/scope/<scope>/industry/<int:industry_id>")
@@ -91,6 +90,7 @@ def sector_view(scope, industry_id):
     return render_template(
         "sector.html", scope=scope,
         industry_id=industry_id, industry_name=ind.name,
+        country_id=request.args.get("country", type=int)
     )
 
 
@@ -121,12 +121,23 @@ def api_years():
     return api_response(services.available_years())
 
 
+@app.route("/api/monopoly-types")
+def api_monopoly_types():
+    return api_response([{"id": t.id, "name": t.name} for t in MonopolyType.query.all()])
+
+@app.route("/api/scopes/<scope>/totals")
+def api_scope_totals(scope):
+    if scope not in VALID_SCOPES:
+        return api_error("Неизвестный контур", 404)
+    return api_response(services.get_global_totals(scope))
+
 @app.route("/api/scopes/<scope>")
 def api_scope(scope):
     if scope not in VALID_SCOPES:
         return api_error("Неизвестный контур", 404)
     year = request.args.get("year", type=int)
-    return api_response(services.get_scope_overview(scope, year))
+    country_id = request.args.get("country", type=int)
+    return api_response(services.get_scope_overview(scope, country_id, year))
 
 
 @app.route("/api/scopes/<scope>/industries/<int:industry_id>")
@@ -134,7 +145,9 @@ def api_sector(scope, industry_id):
     if scope not in VALID_SCOPES:
         return api_error("Неизвестный контур", 404)
     year = request.args.get("year", type=int)
-    data = services.get_sector_detail(scope, industry_id, year)
+    country_id = request.args.get("country", type=int)
+    type_id = request.args.get("type", type=int)
+    data = services.get_sector_detail(scope, industry_id, country_id, type_id, year)
     if not data:
         return api_error("Отрасль не найдена", 404)
     return api_response(data)
@@ -147,6 +160,8 @@ def api_monopoly(monopoly_id):
         return api_error("Монополия не найдена", 404)
     return api_response(data)
 
+
+# ---------- Flask-Admin ----------
 
 class SecureAdminIndexView(AdminIndexView):
     @expose("/")
@@ -164,20 +179,16 @@ class SecureModelView(ModelView):
 
 
 class CountryAdmin(SecureModelView):
-    column_list = ("id", "name", "code", "market_scope")
-    form_columns = ("name", "code", "market_scope")
+    # Убрали market_scope, так как его больше нет в модели Country
+    column_list = ("id", "name", "code")
+    form_columns = ("name", "code")
     column_labels = {
         "name": "Название страны",
         "code": "Код (ISO)",
-        "market_scope": "Контур",
-    }
-    form_choices = {
-        "market_scope": [("ru", "Национальный"), ("world", "Глобальный")],
     }
     form_args = {
         "name": {"validators": [DataRequired()]},
         "code": {"validators": [DataRequired()]},
-        "market_scope": {"validators": [DataRequired()]},
     }
 
 
@@ -198,11 +209,11 @@ class MonopolyTypeAdmin(SecureModelView):
 class MonopolyAdmin(SecureModelView):
     column_list = (
         "id", "name", "short_name", "inn", "country", "industry",
-        "monopoly_type", "employees", "founded_year", "logo_url"
+        "monopoly_type", "market_scope", "employees", "founded_year"
     )
     form_columns = (
         "name", "short_name", "inn",
-        "country", "industry", "monopoly_type",
+        "country", "industry", "monopoly_type", "market_scope",
         "description", "website",
         "employees", "founded_year",
         "logo_url",
@@ -214,11 +225,15 @@ class MonopolyAdmin(SecureModelView):
         "country": "Страна",
         "industry": "Отрасль",
         "monopoly_type": "Тип монополии",
+        "market_scope": "Контур рынка",
         "description": "Описание",
         "website": "Сайт",
         "employees": "Сотрудников, тыс.",
         "founded_year": "Год основания",
         "logo_url": "Ссылка на логотип (URL)",
+    }
+    form_choices = {
+        "market_scope": [("ru", "Национальный"), ("world", "Глобальный")],
     }
     form_args = {
         "name": {"validators": [DataRequired()]},
@@ -226,6 +241,7 @@ class MonopolyAdmin(SecureModelView):
         "country": {"validators": [DataRequired()]},
         "industry": {"validators": [DataRequired()]},
         "monopoly_type": {"validators": [DataRequired()]},
+        "market_scope": {"validators": [DataRequired()]},
         "logo_url": {"validators": [Optional(), URL()]},
     }
 
@@ -283,14 +299,15 @@ class CourtCaseAdmin(SecureModelView):
 
 class CountryIndustryNoteAdmin(SecureModelView):
     column_list = (
-        "id", "country", "industry", "title",
+        "id", "market_scope", "country", "industry", "title",
         "hhi_override", "top_share_override", "companies_override"
     )
     form_columns = (
-        "country", "industry", "title", "body",
+        "market_scope", "country", "industry", "title", "body",
         "hhi_override", "top_share_override", "companies_override"
     )
     column_labels = {
+        "market_scope": "Контур рынка",
         "country": "Страна",
         "industry": "Отрасль",
         "title": "Заголовок",
@@ -299,8 +316,10 @@ class CountryIndustryNoteAdmin(SecureModelView):
         "top_share_override": "Доля лидера, %",
         "companies_override": "Компаний",
     }
+    form_choices = {
+        "market_scope": [("ru", "Национальный"), ("world", "Глобальный")],
+    }
     
-    # Принудительно создаем поля для формы
     form_extra_fields = {
         "hhi_override": FloatField("HHI вручную", validators=[Optional()]),
         "top_share_override": FloatField("Доля лидера, %", validators=[Optional()]),
@@ -311,8 +330,8 @@ class CountryIndustryNoteAdmin(SecureModelView):
         "country": {"validators": [DataRequired()]},
         "industry": {"validators": [DataRequired()]},
         "body": {"validators": [DataRequired()]},
+        "market_scope": {"validators": [DataRequired()]},
     }
-
 
 admin = Admin(
     app, name="Панель администратора",
