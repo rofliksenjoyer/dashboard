@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}{{ industry_name }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{{ url_for('index') }}">Главное меню</a>
+    <span class="sep">/</span>
+    <a href="{{ url_for('scope_view', scope=scope) }}">
+        {% if scope == 'world' %}Глобальные рынки{% else %}Рынки отдельных стран{% endif %}
+    </a>
+    <span class="sep">/</span>
+    <span>{{ industry_name }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 id="sector-title">{{ industry_name }}</h1>
+    <div class="year-picker">
+        <label>Год:</label>
+        <select id="year-select"></select>
+    </div>
+</div>
+
+<div class="sector-info" id="sector-info"></div>
+
+<div id="sector-flags" class="sector-flags">
+    <p class="muted">Загрузка…</p>
+</div>
+
+<h2>Рынки и компании отрасли</h2>
+<div class="sector-filters" style="margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+    <div class="year-picker">
+        <label>Тип монополии:</label>
+        <select id="type-select">
+            <option value="">Все типы</option>
+        </select>
+    </div>
+    <div class="year-picker">
+        <label>Рынок:</label>
+        <select id="market-select">
+            <option value="">Все рынки</option>
+        </select>
+    </div>
+</div>
+<p class="muted" style="margin-bottom: 0.75rem; font-size: 12px;">★ — основной (главный) рынок компании, а не лидер рынка по доле.</p>
+<div id="markets-container">
+    <p class="muted">Загрузка…</p>
+</div>
+
+<div id="chart-modal" class="chart-modal">
+    <div class="chart-modal-content">
+        <button class="chart-modal-close" aria-label="Закрыть">×</button>
+        <div id="chart-modal-body"></div>
+    </div>
+</div>
+
+<div id="note-modal" class="note-modal">
+    <div class="note-modal-content">
+        <button class="note-modal-close" aria-label="Закрыть">×</button>
+        <div id="note-modal-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const SCOPE = "{{ scope }}";
+    const INDUSTRY_ID = {{ industry_id }};
+    const COUNTRY_ID = {{ country_id or 'null' }};
+</script>
+<script src="{{ url_for('static', filename='js/sector.js') }}"></script>
+{% endblock %}

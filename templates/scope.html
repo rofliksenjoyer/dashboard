@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if scope == 'world' %}Глобальные рынки{% else %}Рынки отдельных стран{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{{ url_for('index') }}">Главное меню</a>
+    <span class="sep">/</span>
+    <span>{% if scope == 'world' %}Глобальные рынки{% else %}Рынки отдельных стран{% endif %}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        {% if scope == 'world' %}Глобальные рынки{% else %}Рынки отдельных стран{% endif %}
+        — Отрасли и рынки
+    </h1>
+    <div class="year-picker">
+        <label>Год:</label>
+        <select id="year-select"></select>
+    </div>
+</div>
+
+<div id="industries-container">
+    <p class="muted">Загрузка…</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const SCOPE = "{{ scope }}";
+    const COUNTRY_ID = {{ country_id or 'null' }};
+</script>
+<script src="{{ url_for('static', filename='js/scope.js') }}"></script>
+{% endblock %}
